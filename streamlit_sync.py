@@ -29,40 +29,52 @@ class ZuperSync:
         """Fetch all jobs from Zuper API"""
         if progress_callback:
             progress_callback("Fetching jobs from Zuper API...")
-        
+
         url = f"{self.base_url}/api/jobs"
         jobs = []
         page = 1
         page_size = 100
-        
+
         while True:
             if progress_callback:
                 progress_callback(f"Fetching page {page}...")
-            
+
             params = {
                 'page': page,
-                'limit': page_size
+                'count': page_size  # Changed from 'limit' to 'count' to match working script
             }
-            
+
             response = requests.get(url, headers=self.headers, params=params)
             response.raise_for_status()
-            
+
             data = response.json()
-            page_jobs = data.get('jobs', [])
-            
-            if not page_jobs:
+
+            # Check response structure
+            if data.get('type') == 'success':
+                page_jobs = data.get('data', [])  # Changed from 'jobs' to 'data'
+                total_pages = data.get('total_pages', 0)
+
+                if progress_callback:
+                    progress_callback(f"Page {page}: Retrieved {len(page_jobs)} jobs (Total pages: {total_pages})")
+
+                if not page_jobs:
+                    break
+
+                jobs.extend(page_jobs)
+
+                # Check if there are more pages
+                if page >= total_pages or len(page_jobs) < page_size:
+                    break
+
+                page += 1
+            else:
+                if progress_callback:
+                    progress_callback(f"Error: API response type is not 'success': {data}")
                 break
-            
-            jobs.extend(page_jobs)
-            
-            if len(page_jobs) < page_size:
-                break
-            
-            page += 1
-        
+
         if progress_callback:
             progress_callback(f"Fetched {len(jobs)} jobs from API")
-        
+
         return jobs
     
     def sync_to_database(self, jobs: List[Dict], progress_callback=None) -> Dict:
