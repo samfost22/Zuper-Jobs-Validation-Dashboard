@@ -435,64 +435,46 @@ jobs, total_count = get_jobs(
 st.subheader(f"Jobs ({total_count} total)")
 
 if jobs:
-    # Convert to dataframe for display
-    df_data = []
-    for job in jobs:
+    # Display jobs as interactive rows with inline action buttons
+    for idx, job in enumerate(jobs):
         completed_date = job['completed_at'] if job['completed_at'] else job['created_at']
-
-        # Construct Zuper job URL
         zuper_url = f"https://web.zuperpro.com/jobs/{job['job_uid']}/details"
 
-        df_data.append({
-            'Job #': job['job_number'],
-            'Title': job['job_title'][:50] + '...' if len(job['job_title']) > 50 else job['job_title'],
-            'Organization': job['organization_name'] or '-',
-            'Service Team': job['service_team'] or '-',
-            'Completed': completed_date[:10] if completed_date else '-',
-            'Status': '✅ Passing' if not job['flag_type'] else '❌ Issues',
-            'Zuper Link': zuper_url,
-            'UID': job['job_uid']
-        })
+        # Create a container for each job row
+        with st.container():
+            # Use columns for layout: Info | Status | Actions
+            col1, col2, col3 = st.columns([5, 1.5, 1.5])
 
-    df = pd.DataFrame(df_data)
+            with col1:
+                # Job details
+                st.markdown(f"**#{job['job_number']}** - {job['job_title'][:60] + '...' if len(job['job_title']) > 60 else job['job_title']}")
+                st.caption(f"{job['organization_name'] or '-'} | {job['service_team'] or '-'} | Completed: {completed_date[:10] if completed_date else '-'}")
 
-    # Display table with clickable links using column_config
-    st.dataframe(
-        df.drop(columns=['UID']),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Zuper Link": st.column_config.LinkColumn(
-                "Zuper Job",
-                help="Click to open job in Zuper",
-                display_text="View Job"
-            )
-        }
-    )
+            with col2:
+                # Status
+                if job['flag_type']:
+                    st.markdown("🔴 **Issues**")
+                    if job['flag_message']:
+                        st.caption(job['flag_message'][:40] + '...' if len(job['flag_message']) > 40 else job['flag_message'])
+                else:
+                    st.markdown("✅ **Passing**")
 
-    # Show "Mark as Reviewed" buttons for jobs with issues
-    jobs_with_issues = [job for job in jobs if job['flag_type']]
-    if jobs_with_issues:
-        st.subheader("📋 Review Jobs with Issues")
-        st.caption("Mark jobs as reviewed if they've been manually approved despite validation issues")
-
-        # Create columns for buttons (3 per row)
-        cols_per_row = 3
-        for i in range(0, len(jobs_with_issues), cols_per_row):
-            cols = st.columns(cols_per_row)
-            for j, job in enumerate(jobs_with_issues[i:i+cols_per_row]):
-                with cols[j]:
-                    if st.button(
-                        f"✓ Mark #{job['job_number']} as Reviewed",
-                        key=f"review_{job['job_uid']}",
-                        use_container_width=True
-                    ):
+            with col3:
+                # Actions
+                st.link_button("View Job", zuper_url, use_container_width=True)
+                # Show review button only for jobs with issues
+                if job['flag_type']:
+                    if st.button("✓ Reviewed", key=f"review_{job['job_uid']}", use_container_width=True, type="secondary"):
                         rows_updated = mark_job_good(job['job_uid'])
                         if rows_updated > 0:
                             st.success(f"✓ Job #{job['job_number']} marked as reviewed!")
                             st.rerun()
                         else:
                             st.warning("No changes made")
+
+            # Divider between rows
+            if idx < len(jobs) - 1:
+                st.divider()
 
     # Pagination
     total_pages = (total_count + 49) // 50
