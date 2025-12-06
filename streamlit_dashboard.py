@@ -443,7 +443,31 @@ if jobs:
             )
         }
     )
-    
+
+    # Show "Mark as Reviewed" buttons for jobs with issues
+    jobs_with_issues = [job for job in jobs if job['flag_type']]
+    if jobs_with_issues:
+        st.subheader("📋 Review Jobs with Issues")
+        st.caption("Mark jobs as reviewed if they've been manually approved despite validation issues")
+
+        # Create columns for buttons (3 per row)
+        cols_per_row = 3
+        for i in range(0, len(jobs_with_issues), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for j, job in enumerate(jobs_with_issues[i:i+cols_per_row]):
+                with cols[j]:
+                    if st.button(
+                        f"✓ Mark #{job['job_number']} as Reviewed",
+                        key=f"review_{job['job_uid']}",
+                        use_container_width=True
+                    ):
+                        rows_updated = mark_job_good(job['job_uid'])
+                        if rows_updated > 0:
+                            st.success(f"✓ Job #{job['job_number']} marked as reviewed!")
+                            st.rerun()
+                        else:
+                            st.warning("No changes made")
+
     # Pagination
     total_pages = (total_count + 49) // 50
     col1, col2, col3 = st.columns([1, 2, 1])
