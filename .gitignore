@@ -1,0 +1,42 @@
+# Secrets
+.streamlit/secrets.toml
+
+# Database
+*.db
+*.db-journal
+
+# Data files
+jobs_data.json
+organizations_data.json
+*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test files
+check_*.py
+analyze_*.py
+test_*.py

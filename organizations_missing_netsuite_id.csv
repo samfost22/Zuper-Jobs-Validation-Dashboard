@@ -1,0 +1,20 @@
+organization_uid,organization_name,organization_email,no_of_customers,is_active,is_portal_enabled,external_id,hubspot_company_id,has_custom_fields,created_at,updated_at
+216cf874-adde-4e40-a820-6e568df3ec90,Landgut Nemt,christoph.dobelt@landgut-nemt.de,1,True,False,,,True,2025-12-01T09:51:41.648Z,2025-12-01T09:51:41.649Z
+3c426acb-8066-45e5-8fe8-a00867e681ae,Rhone Bio,y.etter@rhonebio.ch,1,True,False,,,True,2025-11-24T09:09:12.390Z,2025-11-24T09:09:12.391Z
+35e65473-df51-471c-a66e-90570284e772,Koetsenruijter ,gkoetsen@hotmail.com,1,True,False,,,True,2025-11-24T08:45:59.720Z,2025-11-24T08:54:00.007Z
+703292ee-404a-43e3-b265-2261594a226a,Boettcher Gartenbau,s.boettcher@boettcher-gartenbau.de,1,True,False,,,True,2025-10-31T10:47:35.043Z,2025-11-03T07:56:01.642Z
+a162c4d0-018d-411b-8c2e-184691dd8daf,Henrich Vinnen GbR,hvinnen@gmail.com,1,True,False,,,True,2025-10-30T22:21:15.817Z,2025-10-30T22:21:15.818Z
+c446236a-e9d0-408d-b39c-cb477d9f88b4,Schäfer / Meyer GmbH,kontakt@bio-feldgemuese.de,1,True,False,,,True,2025-10-23T07:13:32.550Z,2025-10-23T07:13:32.551Z
+06d74510-6d85-45bb-9969-6db14d3413ff,Cuma Casdi ,didier.rosier981@orange.fr,1,True,False,,,True,2025-10-22T21:34:17.911Z,2025-10-23T21:09:42.782Z
+4944dc29-03ea-4007-adbf-8bdac0c8216f,Ellenholm & Vadensjö Jordbruks Ab ,info@ellenholm.se,1,True,False,,,True,2025-10-22T11:26:01.158Z,2025-10-29T23:43:09.303Z
+6bed8191-6a51-4043-9947-18cd986982cc,DanRoots A/S,kve@danroots.com,1,True,False,,,True,2025-10-22T11:02:08.511Z,2025-10-22T11:25:57.111Z
+39ef305a-5d30-4b03-af34-c6daab93bfb2,Ecotractor del sur,pedro@ecotractor.com,1,True,False,,,True,2025-10-14T09:50:30.854Z,2025-10-14T11:33:03.413Z
+cbb6080b-44f3-4e5d-9f7c-eccac602090d,County Line Harvest,clharvest@gmail.com,1,True,False,,,False,2025-09-06T15:52:04.740Z,2025-09-06T15:52:04.741Z
+67ad707a-6b0b-41c1-9e41-b7d39dc4dd89,Leaderbrand ,gordon.mcphail@leaderbrand.co.nz,1,True,False,,,True,2025-08-19T13:08:28.722Z,2025-10-10T14:56:16.554Z
+3bdeaec0-64ec-4881-bac4-55c64a6920a8,Tkm Bengard Farms LLC,,1,True,False,,29443713285,True,2025-07-30T21:45:54.378Z,2025-07-30T21:45:54.378Z
+528da124-02ab-4268-bf55-0c26313f9a94,Bio Latina,Biolatina@zuper.com,1,True,False,,,True,2025-07-24T19:55:05.230Z,2025-09-01T14:13:29.019Z
+ac0feb16-b6c6-41f2-b65a-ba3527eb4c76,Carbon Robotics BV,matiasb@carbonrobotics.com,3,True,False,,,True,2025-06-19T07:29:07.244Z,2025-11-07T12:48:57.968Z
+8f7c44f2-2374-4bb9-95c9-0a3d76ec0f16,Svihel Vegetable Farm,,1,False,False,,30482831758,True,2025-05-24T20:55:11.734Z,2025-07-18T00:47:31.798Z
+0d28c74a-00ef-4cb2-b1f9-68faf1e67f41,Huerta de Peralta S.A.T 413,Huerta@zuper.com,1,True,False,,,True,2025-04-05T07:38:15.268Z,2025-07-26T14:53:26.949Z
+4c4d4aa6-b4d9-4859-969d-ac6e44b78778,Chris test company,,1,True,False,,30145573515,True,2025-02-25T21:49:18.206Z,2025-04-05T07:38:16.280Z
+66714894-e65f-4f49-8356-ef0e3f36a0b6,Carbon Robotics,,30,True,False,,,True,2024-06-10T16:11:26.186Z,2025-04-05T07:38:16.033Z

@@ -1,0 +1,26 @@
+Serial Number,Job Title,Job UID,Status,Scanner Position,Machine/Asset,Is Rework,Created Date,Rework Details
+CR-SM-00282,S83-Slayer Serial Audit,94a44f29-f552-4e89-b35d-d8a2a7ba8bfc,New,,,NO,2025-06-28T02:10:23.596Z,
+CR-SM-00282,S58-Slayer Serial Audit,570690a6-6471-466c-a729-760d93ea4d6b,New,,,NO,2025-06-28T01:37:45.997Z,
+CR-SM-00282,S22-Slayer Serial Audit,5959196f-92b4-4b25-b419-49ca84e028d1,New,,,NO,2025-06-26T21:45:09.558Z,
+CR-SM-00282,S21-Slayer Serial Audit,02d15cb2-8136-4777-a146-111d3c602bf8,New,,,NO,2025-06-26T21:42:31.893Z,
+CR-SM-00282,S6-Slayer Serial Audit,bfce1c49-84f4-4337-8772-5a45f6c25089,New,,,NO,2025-06-26T21:09:52.698Z,
+CR-SM-003584,S112:Row 1 Laser Control Board 3 Unresponsive,0ab9ad51-190c-473a-bdf6-efee9a3aa0cd,New,,,NO,2025-04-28T07:29:11.756Z,
+CR-SM-003587,S112:Replace scanner 3-6,9300791d-1f77-4246-947d-fd40e209eb52,New,,,YES,2025-10-13T16:00:34.529Z,Title indicates rework/repair: S112:Replace scanner 3-6
+CR-SM-003615,S112:Replace scanner 3-3,6ae5589e-24e9-4fa5-bb94-c0125adb3084,New,,,YES,2025-10-13T16:00:19.364Z,Title indicates rework/repair: S112:Replace scanner 3-3
+CR-SM-003641,S112:Row 1 Laser 1 control board issues,47248a7f-6e3b-48e7-8297-1242fbd0496d,New,,,YES,2025-04-22T08:41:21.838Z,Title indicates rework/repair: S112:Row 1 Laser 1 control board issues
+CR-SM-003666,"S112:Row 1 Laser Control Board 10 Unresponsive, Error code: BOOTING",f7796fca-5f07-407a-bc8c-913c8ceef6fa,New,,,NO,2025-04-22T17:21:47.953Z,
+CR-SM-003806,S112:Replace scanner 3-4,0b63ac95-1e0c-4a43-9fb5-08ecb5e27015,New,,,YES,2025-10-13T16:00:26.725Z,Title indicates rework/repair: S112:Replace scanner 3-4
+CR-SM-003865,S112:Replace scanner 3-2,4a7cc9c2-a9a9-489a-985b-92ea1d657306,New,,,YES,2025-10-13T16:00:11.092Z,Title indicates rework/repair: S112:Replace scanner 3-2
+CR-SM-003865,"S35:Scanner replacement 1-7, servo failed",819a5784-cf2b-43a0-9d5f-0802f1188b49,New,,,YES,2025-03-04T05:30:03.674Z,"Title indicates rework/repair: S35:Scanner replacement 1-7, servo failed"
+CR-SM-003868,S89-Slayer Serial Audit,a9b204a9-14c3-4107-af83-1c7410d8b77e,New,,,NO,2025-06-28T02:22:15.936Z,
+CR-SM-003868,"S112:Row 1 Laser Control Board 10 Unresponsive, Error code: BOOTING",f7796fca-5f07-407a-bc8c-913c8ceef6fa,New,,,NO,2025-04-22T17:21:47.953Z,
+CR-SM-003349,NOT FOUND,,,,,,,
+CR-SM-003549,NOT FOUND,,,,,,,
+CR-SM-003560,NOT FOUND,,,,,,,
+CR-SM-003605,NOT FOUND,,,,,,,
+CR-SM-003609,NOT FOUND,,,,,,,
+CR-SM-003669,NOT FOUND,,,,,,,
+CR-SM-003673,NOT FOUND,,,,,,,
+CR-SM-003685,NOT FOUND,,,,,,,
+CR-SM-004088,NOT FOUND,,,,,,,
+CR-SM-004111,NOT FOUND,,,,,,,

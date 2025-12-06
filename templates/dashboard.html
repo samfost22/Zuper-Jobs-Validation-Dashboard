@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zuper-NetSuite Monitoring Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
+        .stat-card h3 {
+            font-size: 0.875rem;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .subvalue {
+            font-size: 0.875rem;
+            color: #9ca3af;
+        }
+
+        .stat-card.alert {
+            border-left: 4px solid #ef4444;
+        }
+
+        .stat-card.success {
+            border-left: 4px solid #10b981;
+        }
+
+        .stat-card.warning {
+            border-left: 4px solid #f59e0b;
+        }
+
+        .stat-card.info {
+            border-left: 4px solid #3b82f6;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 2rem;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .card-header h2 {
+            font-size: 1.5rem;
+            color: #1f2937;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .btn-secondary:hover {
+            background: #d1d5db;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        select, input[type="text"] {
+            padding: 0.5rem 1rem;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: #f9fafb;
+        }
+
+        th {
+            text-align: left;
+            padding: 0.75rem 1rem;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        tbody tr:hover {
+            background: #f9fafb;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-danger {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #6b7280;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #6b7280;
+        }
+
+        .empty-state h3 {
+            font-size: 1.25rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .alert-item {
+            padding: 1rem;
+            border-left: 4px solid #ef4444;
+            background: #fef2f2;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+        }
+
+        .alert-item h4 {
+            color: #991b1b;
+            margin-bottom: 0.5rem;
+        }
+
+        .alert-item p {
+            color: #7f1d1d;
+            font-size: 0.875rem;
+        }
+
+        .timestamp {
+            color: #6b7280;
+            font-size: 0.75rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .tab {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-weight: 500;
+            color: #6b7280;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab:hover {
+            color: #4c51bf;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Zuper-NetSuite Monitoring Dashboard</h1>
+        <p>Track organizations and NetSuite ID coverage in real-time</p>
+    </div>
+
+    <div class="container">
+        <!-- Statistics Cards -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card info">
+                <h3>Total Organizations</h3>
+                <div class="value" id="totalOrgs">-</div>
+                <div class="subvalue">Active organizations</div>
+            </div>
+
+            <div class="stat-card success">
+                <h3>With NetSuite ID</h3>
+                <div class="value" id="withNetsuiteId">-</div>
+                <div class="subvalue"><span id="coveragePercent">-</span>% coverage</div>
+            </div>
+
+            <div class="stat-card alert">
+                <h3>Missing NetSuite ID</h3>
+                <div class="value" id="withoutNetsuiteId">-</div>
+                <div class="subvalue">Need attention</div>
+            </div>
+
+            <div class="stat-card warning">
+                <h3>Open Alerts</h3>
+                <div class="value" id="openAlerts">-</div>
+                <div class="subvalue">Unresolved issues</div>
+            </div>
+
+            <div class="stat-card info">
+                <h3>New (7 days)</h3>
+                <div class="value" id="newOrgs7days">-</div>
+                <div class="subvalue">Recently created</div>
+            </div>
+
+            <div class="stat-card info">
+                <h3>New (30 days)</h3>
+                <div class="value" id="newOrgs30days">-</div>
+                <div class="subvalue">Last month</div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('organizations')">Organizations</button>
+            <button class="tab" onclick="switchTab('alerts')">Alerts</button>
+            <button class="tab" onclick="switchTab('sync-history')">Sync History</button>
+        </div>
+
+        <!-- Organizations Tab -->
+        <div id="organizationsTab" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Organizations</h2>
+                    <div class="controls">
+                        <input type="text" id="searchInput" placeholder="Search organizations..." onkeyup="filterOrganizations()">
+                        <select id="filterSelect" onchange="filterOrganizations()">
+                            <option value="all">All Active</option>
+                            <option value="missing_netsuite">Missing NetSuite ID</option>
+                            <option value="with_netsuite">With NetSuite ID</option>
+                            <option value="new_7days">New (7 days)</option>
+                            <option value="new_30days">New (30 days)</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                        <button class="btn btn-secondary" onclick="exportCSV()">Export CSV</button>
+                        <button class="btn btn-primary" onclick="refreshData()">Refresh</button>
+                    </div>
+                </div>
+
+                <div id="organizationsTable">
+                    <div class="loading">Loading organizations...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts Tab -->
+        <div id="alertsTab" class="tab-content" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Alerts</h2>
+                    <div class="controls">
+                        <button class="btn btn-secondary" onclick="toggleResolvedAlerts()">
+                            <span id="toggleResolvedText">Show Resolved</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="refreshAlerts()">Refresh</button>
+                    </div>
+                </div>
+
+                <div id="alertsList">
+                    <div class="loading">Loading alerts...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sync History Tab -->
+        <div id="syncHistoryTab" class="tab-content" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Sync History</h2>
+                    <div class="controls">
+                        <button class="btn btn-primary" onclick="refreshSyncHistory()">Refresh</button>
+                    </div>
+                </div>
+
+                <div id="syncHistoryTable">
+                    <div class="loading">Loading sync history...</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="text-align: center; padding: 2rem; color: #9ca3af; font-size: 0.875rem;">
+            Last updated: <span id="lastUpdate">-</span>
+        </div>
+    </div>
+
+    <script>
+        let showResolvedAlerts = false;
+        let currentTab = 'organizations';
+
+        // Load initial data
+        window.onload = function() {
+            loadStats();
+            loadOrganizations();
+            updateLastUpdate();
+        };
+
+        function switchTab(tab) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+
+            // Show selected tab
+            currentTab = tab;
+            if (tab === 'organizations') {
+                document.getElementById('organizationsTab').style.display = 'block';
+                document.querySelectorAll('.tab')[0].classList.add('active');
+                loadOrganizations();
+            } else if (tab === 'alerts') {
+                document.getElementById('alertsTab').style.display = 'block';
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                loadAlerts();
+            } else if (tab === 'sync-history') {
+                document.getElementById('syncHistoryTab').style.display = 'block';
+                document.querySelectorAll('.tab')[2].classList.add('active');
+                loadSyncHistory();
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const stats = await response.json();
+
+                document.getElementById('totalOrgs').textContent = stats.total_organizations;
+                document.getElementById('withNetsuiteId').textContent = stats.with_netsuite_id;
+                document.getElementById('withoutNetsuiteId').textContent = stats.without_netsuite_id;
+                document.getElementById('coveragePercent').textContent = stats.coverage_percentage;
+                document.getElementById('newOrgs7days').textContent = stats.new_orgs_7days;
+                document.getElementById('newOrgs30days').textContent = stats.new_orgs_30days;
+                document.getElementById('openAlerts').textContent = stats.open_alerts;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        async function loadOrganizations() {
+            const filter = document.getElementById('filterSelect').value;
+            const search = document.getElementById('searchInput').value;
+
+            try {
+                const response = await fetch(`/api/organizations?filter=${filter}&search=${encodeURIComponent(search)}`);
+                const organizations = await response.json();
+
+                const tableHtml = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Organization Name</th>
+                                <th>Email</th>
+                                <th>Customers</th>
+                                <th>NetSuite ID</th>
+                                <th>External ID</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${organizations.map(org => `
+                                <tr>
+                                    <td><strong>${org.organization_name}</strong></td>
+                                    <td>${org.organization_email || '-'}</td>
+                                    <td>${org.no_of_customers}</td>
+                                    <td>${org.netsuite_customer_id ? `<span class="badge badge-success">${org.netsuite_customer_id}</span>` : '<span class="badge badge-danger">Missing</span>'}</td>
+                                    <td>${org.external_id || '-'}</td>
+                                    <td>${org.is_active ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-warning">Inactive</span>'}</td>
+                                    <td class="timestamp">${formatDate(org.created_at)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+                document.getElementById('organizationsTable').innerHTML = organizations.length > 0
+                    ? tableHtml
+                    : '<div class="empty-state"><h3>No organizations found</h3><p>Try adjusting your filters</p></div>';
+            } catch (error) {
+                console.error('Error loading organizations:', error);
+                document.getElementById('organizationsTable').innerHTML = '<div class="empty-state"><h3>Error loading data</h3></div>';
+            }
+        }
+
+        async function loadAlerts() {
+            try {
+                const response = await fetch(`/api/alerts?show_resolved=${showResolvedAlerts}`);
+                const alerts = await response.json();
+
+                const alertsHtml = alerts.length > 0
+                    ? alerts.map(alert => `
+                        <div class="alert-item">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div>
+                                    <h4>${alert.organization_name}</h4>
+                                    <p>${alert.alert_message}</p>
+                                    <div class="timestamp">Created: ${formatDate(alert.created_at)}</div>
+                                </div>
+                                ${!alert.is_resolved ? `<button class="btn btn-success" onclick="resolveAlert(${alert.id})">Resolve</button>` : '<span class="badge badge-success">Resolved</span>'}
+                            </div>
+                        </div>
+                    `).join('')
+                    : '<div class="empty-state"><h3>No alerts found</h3></div>';
+
+                document.getElementById('alertsList').innerHTML = alertsHtml;
+            } catch (error) {
+                console.error('Error loading alerts:', error);
+            }
+        }
+
+        async function loadSyncHistory() {
+            try {
+                const response = await fetch('/api/sync_history');
+                const history = await response.json();
+
+                const tableHtml = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Started</th>
+                                <th>Completed</th>
+                                <th>Fetched</th>
+                                <th>Updated</th>
+                                <th>Created</th>
+                                <th>Status</th>
+                                <th>Errors</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${history.map(sync => `
+                                <tr>
+                                    <td class="timestamp">${formatDate(sync.sync_started_at)}</td>
+                                    <td class="timestamp">${formatDate(sync.sync_completed_at)}</td>
+                                    <td>${sync.organizations_fetched || 0}</td>
+                                    <td>${sync.organizations_updated || 0}</td>
+                                    <td>${sync.organizations_created || 0}</td>
+                                    <td><span class="badge ${sync.status === 'completed' ? 'badge-success' : 'badge-warning'}">${sync.status}</span></td>
+                                    <td>${sync.errors ? '⚠️' : '✓'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+                document.getElementById('syncHistoryTable').innerHTML = history.length > 0
+                    ? tableHtml
+                    : '<div class="empty-state"><h3>No sync history</h3></div>';
+            } catch (error) {
+                console.error('Error loading sync history:', error);
+            }
+        }
+
+        async function resolveAlert(alertId) {
+            try {
+                await fetch(`/api/alerts/${alertId}/resolve`, { method: 'POST' });
+                loadAlerts();
+                loadStats();
+            } catch (error) {
+                console.error('Error resolving alert:', error);
+            }
+        }
+
+        function toggleResolvedAlerts() {
+            showResolvedAlerts = !showResolvedAlerts;
+            document.getElementById('toggleResolvedText').textContent = showResolvedAlerts ? 'Hide Resolved' : 'Show Resolved';
+            loadAlerts();
+        }
+
+        function filterOrganizations() {
+            loadOrganizations();
+        }
+
+        function refreshData() {
+            loadStats();
+            loadOrganizations();
+            updateLastUpdate();
+        }
+
+        function refreshAlerts() {
+            loadAlerts();
+            updateLastUpdate();
+        }
+
+        function refreshSyncHistory() {
+            loadSyncHistory();
+            updateLastUpdate();
+        }
+
+        function exportCSV() {
+            window.location.href = '/api/export/csv';
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            return date.toLocaleString();
+        }
+
+        function updateLastUpdate() {
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleString();
+        }
+
+        // Auto-refresh every 5 minutes
+        setInterval(() => {
+            if (currentTab === 'organizations') {
+                loadStats();
+                loadOrganizations();
+            }
+            updateLastUpdate();
+        }, 300000);
+    </script>
+</body>
+</html>

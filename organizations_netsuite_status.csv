@@ -1,0 +1,191 @@
+organization_uid,organization_name,organization_email,has_netsuite_id,netsuite_customer_id,external_id,hubspot_company_id,no_of_customers,is_active,created_at
+ca2d15dd-4f0e-43c7-897a-d65d74efa282,Top Legume ,valerian.latrille@gmail.com,YES,3649,,,1,True,2025-07-24T11:14:44.320Z
+b4618092-766d-4313-b956-8098a30bfdfc,Hussey & Co,hussey!@zuper.com,YES,3757,,29439948695,1,True,2025-07-18T01:25:01.899Z
+04c59ec6-bfe8-4bb6-9d95-76763bd1113a,So Sweet Produce,SoSweet@zuper.com,YES,3460,,29439953989,1,True,2025-07-18T01:02:46.216Z
+08d46cb6-7a4e-4334-9443-23cc6287acf6,Martin Farms / MLK Land and Livestock,martin@zuper.com,YES,3832,,29438070637,1,True,2025-07-14T14:52:16.972Z
+473157e6-779d-4dc6-aff9-97ff87ba31c4,Carbon Robotics - Engineering,eng@zuper.com,YES,3833,,,3,True,2025-07-11T21:41:47.520Z
+594ed639-6da7-44b0-aa74-ef5db609a5c2,Carbon Robotics - Sales EU,crEUSALES@zuper.com,YES,3835,,,1,True,2025-07-11T21:39:36.571Z
+190addc7-c89f-4bf1-880f-eb8bf87dfead,Carbon Robotics - Sales NA,crsales@zuper.com,YES,3834,,,1,True,2025-07-11T21:36:48.614Z
+ba8b915f-42e8-4c1b-a958-2c7cc659e873,Royalveg Fresh Produce Sl,Royalveg@zuper.com,YES,3844,,,1,True,2025-07-07T12:51:08.071Z
+8d72a4ea-a101-4cfa-8e21-11fefb14741e,Biohof Schirneker-Reineke GmbH,SchirnekerReineke@zuper.com,YES,3816,,,1,True,2025-07-07T12:44:21.494Z
+4b4dcf97-3bcd-4db9-b1ea-c77c506411a7,S.A.T. 9855 Primaflor,primaflor@zuper.com,YES,3821,,,1,True,2025-07-07T12:37:32.192Z
+863cf746-0cf5-4865-933b-27d7d7a62553,Grupo Lucas,grupolucas@zuper.com,YES,3817,,,1,True,2025-07-07T12:02:42.861Z
+71c8ec8d-72f7-4e7b-a3eb-ae2bf5c7add6,Ho Sai Gai Farms Inc,HoSaiGai@carbonrobotic.com,YES,3822,,33248314134,1,True,2025-07-03T15:59:44.843Z
+81a2f61f-44d7-44e1-8be3-c91aa195bf1b,Yang Farm,yang@carbonrobotics.com,YES,3640,,30278037878,1,True,2025-05-24T21:06:10.618Z
+a1f5b524-d156-4bf6-89e3-52e3b3515f86,Herbes De Meaux,hdm.chambry@orange.fr,YES,2814,,29443708048,1,True,2025-05-22T12:43:11.337Z
+2f92a823-8876-4767-b663-54853e8589eb,Full Circle Farms,rmprdave@comcast.net,YES,3641,,,1,True,2025-05-21T16:54:39.003Z
+ca86b047-c8f2-4d6b-b71d-915fa90f7ff5,Widegrens Gård Ab,Widegrens@zuper.com,YES,3605,,29440280839,1,True,2025-04-24T22:40:51.052Z
+0ae59978-d7a6-42b3-be5e-500115c65106,Test,test@zuper.co,YES,123,,,1,True,2025-04-24T18:00:42.533Z
+4c019b48-74a7-4c8c-860d-b8d17f616426,SARL RG vallée,sarlrgvallee@carbonrobotics.com,YES,3596,CUS0150,29440114496,1,True,2025-04-17T10:24:58.196Z
+26222b4e-acbe-4b9a-9669-26c66134d178,Bio Feigl Gmbh,Feigl@carbonrobotics.com,YES,3106,CUS0141,29440113037,1,True,2025-04-16T13:12:30.520Z
+7f8278b9-c3fb-4442-a864-434a3f54628c,Centre Maraicher E Guinois Jr Inc,centremaraicher@carbonrobotics.com,YES,3591,CUS0146,29440119353,1,True,2025-04-11T20:15:06.895Z
+5dd73da6-2baf-4c13-987d-25e85976e187,Zions Credit Corporation,,YES,1232,CUS0095,,0,True,2025-04-05T07:38:15.399Z
+9d54eae0-3746-4b0b-b23a-035ccc7c09cf,Vert Nature Inc,,YES,2625,CUS0110,,0,True,2025-04-05T07:38:15.374Z
+11213f7b-ad67-45b0-97a9-69798d28e9cf,Triple G Farms,tripleg@carbonrobotics.com,YES,3091,,,0,True,2025-04-05T07:38:15.365Z
+d656c880-9f67-485e-8a7e-af21456e191d,Test Customer,,YES,1241,CUS0096,,0,True,2025-04-05T07:38:15.354Z
+f18e8304-a643-4399-8eb5-01116ac80efe,SCEA de l'EvÃªchÃ©,,YES,2814,CUS0122,,0,True,2025-04-05T07:38:15.343Z
+3b7c2687-4cda-4c04-8e72-d6325ac973b5,"Roush Industries, Inc.",,YES,2956,CUS0129,,0,True,2025-04-05T07:38:15.334Z
+97884f4d-9918-45ce-abeb-84c8a48c42de,RDO Equipment,,YES,1248,CUS0102,,0,True,2025-04-05T07:38:15.324Z
+356d231a-8c0f-483a-b490-1c71a3cbb02d,Lockyer Valley Organics,Lockyervalley@carbonrobotics.com,YES,2658,CUS0114,,1,True,2025-04-05T07:38:15.316Z
+966ee360-0a9b-46be-8bdd-003f5b942646,IC Carbon Robotics Pty Ltd,,YES,2095,VEN0558,,0,True,2025-04-05T07:38:15.309Z
+ae9950b7-4377-403e-acad-ee83bc47972e,IC Carbon Robotics Canada Ltd,,YES,2093,VEN0556,,0,True,2025-04-05T07:38:15.298Z
+71a68960-1ea1-4a44-9909-6c28bceab072,IC Carbon Robotics B.V.,,YES,2094,VEN0557,,3,True,2025-04-05T07:38:15.288Z
+b0fde346-4fad-4bc8-90b6-8d26ea28306d,IC Carbon Robotics,,YES,2092,VEN0555,,0,True,2025-04-05T07:38:15.278Z
+4d0b9acc-fe62-460b-bfcf-a956aa5a69d7,Horizon Organics LLC,,YES,1449,CUS0103,,0,True,2025-04-05T07:38:15.254Z
+49df5bc6-e7be-49e8-8533-2bc74147cc54,G's Growers,,YES,3118,CUS0142,,0,True,2025-04-05T07:38:15.240Z
+039ba31b-fcc2-4bbf-b719-24bdfd33527a,Gl. Estrup Gartneri Ã˜ko ApS,,YES,2971,CUS0133,,0,True,2025-04-05T07:38:15.226Z
+bb47958d-87ce-4927-beac-0f96712eddf9,Fresh Foods Inc,,YES,2621,CUS0109,,0,True,2025-04-05T07:38:15.215Z
+6f37d0f5-2c7e-4bc0-8e38-a66e2e50a807,Data Migration Customer,,YES,938,CUS0001,,0,True,2025-04-05T07:38:15.187Z
+8247e070-d97e-4c89-9e9e-eb47021c3412,Croft Design & Irrigation Pty Ltd Atf The Arahura Family Trust,,YES,1771,CUS0106,,0,True,2025-04-05T07:38:15.172Z
+1d63972a-11dd-4c37-a7c0-4e78d5a607e1,Orto di Campo,commerciale@ortodicampo.it,YES,2958,CUS0130,,1,True,2025-04-05T07:38:15.161Z
+6d663de0-1e69-432f-ae45-7bd28ac86ba2,Coolibah Herbs,,YES,2833,CUS0124,,1,True,2025-04-05T07:38:15.150Z
+b4f4038f-8a15-41d9-968d-368f02ed9ebb,CJ Prop Ltd,,YES,2948,CUS0126,,0,True,2025-04-05T07:38:15.139Z
+5354bc51-d98e-45ab-962c-79e72ff12161,Bagthorpe Farm,Bagthorpe@zuper.com,YES,2960,CUS0131,,1,True,2025-04-05T07:38:15.120Z
+d72a2ae6-d73e-43dd-8762-68f2f0f6d3db,ASA Organics,,YES,3079,CUS0134,,0,True,2025-04-05T07:38:15.113Z
+2bf2c770-6e97-4f79-a40c-9863c7b3e72c,Agrobiofutura,,YES,3093,CUS0139,,0,True,2025-04-05T07:38:15.100Z
+adbce2a8-abfb-49a5-80e7-4dce244ecbf6,Jack's Pride Farms Inc.,,YES,1246,CUS0100,,0,True,2025-04-05T07:38:14.835Z
+5b991167-460d-4e54-86f1-c48ff12ef083,Bland Farms,bland@carbonrobotics.com,YES,3594,CUS0149,29379075236,1,True,2025-03-31T19:04:45.082Z
+e8cb2536-3412-4f1d-8986-1e7afdaa5e0e,Brian Andersen Farm,Banderson@carbonrobotics.com,YES,1143,CUS0006,29443705642,1,True,2025-03-31T18:57:59.560Z
+dfbf7ad6-96b4-4b5d-acba-46742d004343,Columbia Basin Onion,cbo@carbonrobotics.com,YES,1151,CUS0014,29440109669,1,True,2025-03-18T17:11:35.895Z
+a6695361-e767-4ed3-b70d-33ce035ad992,Kludt Brothers Farms,kludt@carbonrobotics.com,YES,1184,CUS0047,29439952004,1,True,2025-03-17T17:02:24.329Z
+0aa60be9-1683-45a0-ab58-a7b22c63ab55,Sorbello And Sons,,YES,3445,CUS0144,29443716517,1,True,2025-03-17T16:58:02.807Z
+5f706df9-d705-495e-85a8-870028a1ef39,"Triple G Farms, Inc.",,YES,3091,CUS0137,29439158436,2,True,2025-03-14T21:35:13.100Z
+2f528a08-39bc-40f0-a9cc-bc0394b11e79,Tanimura & Antle,,YES,2777,CUS0117,,1,True,2025-03-05T22:24:58.363Z
+d7d5325f-23ac-43d2-b450-b936533f3a3a,Rava Ranches Inc.,rava@carbonrobotics.com,YES,2621,CUS0109,,1,True,2025-02-25T22:07:14.916Z
+95a8371e-1241-407c-9719-828cc9e737b6,Gs Fresh LTD,GsGroup@zuper.com,YES,3118,CUS0142,,1,True,2025-02-25T16:17:49.958Z
+226f9a1f-b187-4017-b677-112bd40be70e,BFI Native Seeds LLC,,YES,3092,CUS0138,,1,True,2025-02-22T16:34:30.074Z
+e77fdcd4-b960-4c3d-9bba-6e447269d9c7,Van Woerden Biologische Producten,Vanwoerden@zuper.com,YES,3085,CUS0136,,1,True,2025-02-22T00:44:19.671Z
+b635bc37-f74d-478b-a7c2-db9cd6ba404f,Haas Handels GmbH,HaasHandelsGmbH@carbonrobotics.com,YES,3094,CUS0140,,1,True,2025-01-23T19:48:15.069Z
+3b5b2187-8911-4162-a256-a9b801aeb2fe,T.C & N. Taylor Ltd,TCN@zuper.com,YES,2950,CUS0127,,1,True,2025-01-23T19:37:50.975Z
+1206ed6a-b1a9-412c-944a-c361a79b4f49, SAS de Mirabel,SASdeMirabel@carbonrobotics.com,YES,2961,CUS0132,,1,True,2025-01-23T19:28:43.977Z
+6030d1f8-289d-457f-a243-ba8515f392ae,Eva Kammel,romanjochlinger@carbonrobotics.com,YES,2961,CUS0132,,1,True,2025-01-23T18:47:41.154Z
+1d45e7a0-452a-4e16-b714-231a1c6230d2,Mardi de Graaf,graff@carbonrobotics.com,YES,2955,CUS0128,,1,True,2025-01-21T19:38:05.550Z
+15230cc9-ff07-4d44-b3f4-cbaf1cb3d887,SCEA Lavie Bio,sfffff@ff.com,YES,2776,CUS0116,,1,True,2025-01-21T19:30:31.448Z
+67085236-9b6a-4594-8ac4-b671ec055d98,Cuma Landes de Gascogne,Cuma@zuper.com,YES,2638,CUS0112,,1,True,2025-01-21T19:14:24.842Z
+0d1265fe-1cec-4369-80af-31afd709da95,Landesproduktenhandels GmbH,Thomasschneider@zuper.com,YES,2846,CUS0125,,1,True,2025-01-21T18:24:39.249Z
+9dda8172-5df9-4f6c-9924-3c73d8b93d23,Biotechnik GbR,Biotechnik@zuper.com,YES,2637,CUS0111,,1,True,2025-01-21T18:04:27.239Z
+70ba2c1c-baf3-4acf-ba37-abdcdd9ab2ed,Bulmer Farms Pty Ltd,,YES,2813,CUS0121,,1,True,2025-01-20T22:25:01.554Z
+677acf38-63f7-4eaf-b7c6-36c576dfdd1d,Riviera Farms,,YES,2803,CUS0120,,1,True,2025-01-20T22:23:17.650Z
+02ce1a1d-cac6-4ce0-b352-96d5afd882ab,Andreas Renner Biogemuese,Renner@zuper.com,YES,2799,CUS0119,,1,True,2025-01-07T21:35:43.529Z
+8869aacf-6a91-4968-88de-09fbdda40f65,Schlosser Frischgemuese,Schlosser@zuper.com,YES,2642,CUS0113,,1,True,2025-01-07T21:04:46.759Z
+239d2d86-661f-4c85-a1b2-8c0d14c01c1a,Arahura Farms,s86@carbonrobotics.com,YES,1771,CUS0106,,1,True,2025-01-07T08:11:36.486Z
+f3b66ac7-063e-4685-957e-8936a546768a,Wassergemeinschaft Biohof Anzbock OG,Anzbock@zuper.com,YES,2772,CUS0115,,1,True,2025-01-03T22:07:11.726Z
+f7ff9346-e44b-4882-bb34-c767b50bb29e,Van Erkel farms inc,,YES,2619,CUS0108,,1,True,2024-12-18T21:51:53.166Z
+942f110c-968d-4a6b-b519-fc72c4263a9e,Rio Fresh Inc,,YES,2815,CUS0123,,1,True,2024-11-20T03:35:40.798Z
+f55c94ff-68e7-488f-abcf-fd94e37db32e,B&B Farms,,YES,1247,CUS0101,,1,True,2024-11-20T03:15:59.792Z
+b518d949-41af-4595-85e0-cdd61fb9b394,Heritage Farms,,YES,1245,CUS0099,,1,True,2024-11-15T17:25:21.173Z
+5aa34f5a-aeab-4170-9e9b-9bd2d21e4f51,Heartland Agro US LLC,,YES,1243,CUS0097,,1,True,2024-10-23T03:40:30.388Z
+5918d469-9af4-4446-99f4-88e72468c726, Jack's Pride Farms Inc.,jacks@carbonrobotics.com,YES,1246,CUS0100,,1,True,2024-10-23T03:27:39.805Z
+fbd0601c-7bda-4638-b775-7eca6d437b12,Azure Farms,,YES,1772,CUS0107,,1,True,2024-10-10T15:45:03.613Z
+a24a97b5-9375-452b-8098-8fd04c42bb43,Wyckoff Farms,jakew@wyckoff-farms.com,YES,1231,CUS0094,,0,True,2024-06-05T13:27:44.391Z
+eca4ada1-81a1-4a0a-99f8-83b19e916e22,WP Rawl & Sons,accountspay@rawl.net,YES,1230,CUS0093,,1,True,2024-06-05T13:27:44.383Z
+99ea9280-5931-44af-bc61-bd4c5a2ca284,Willoughby Farms Inc,David@willoughbyfarms.us,YES,1229,CUS0092,,0,True,2024-06-05T13:27:44.376Z
+9644aee2-3526-4070-9ee0-5ba5afb6ac02,W.R. Johnson & Sons LLC,james@carzaliavalley.com,YES,1228,CUS0091,,1,True,2024-06-05T13:27:44.370Z
+314bc484-2c55-4bd3-b1bc-839e2ec7a9eb,VegPro International Inc,anthony.fantin@vegpro.com,YES,1227,CUS0090,,1,True,2024-06-05T13:27:44.363Z
+7ddfb261-5759-4fc0-8a65-2248b8fe47e7,Van Drunen Farms,dan.callahan@vandrunen.com,YES,1226,CUS0089,,1,True,2024-06-05T13:27:44.357Z
+9861a4ae-6e8f-49eb-9900-9cc92bd6ffb5,Tuxedo Corn Company,madmanflyboy3@yahoo.com,YES,1225,CUS0088,,2,True,2024-06-05T13:27:44.350Z
+8731520f-32ee-44ed-8718-edab093f8c57,Trout Lake Farm LLC,keith.eppers@Amway.com,YES,1224,CUS0087,,1,True,2024-06-05T13:27:44.343Z
+748d1a33-d3e1-412d-bfb1-b5feb1545e07,Tripod Farmers Trust,Angela@tripodfarms.com.au,YES,1223,CUS0086,,1,True,2024-06-05T13:27:44.337Z
+74a459d5-9795-48c8-857b-11ea1aa35a33,Triangle Farms,TFi-AP@trianglefarmsinc.com,YES,1222,CUS0085,,1,True,2024-06-05T13:27:44.331Z
+1b7559e2-9b80-40c3-b06e-5263d870551c,Torrey Equipment Inc,maxwelltorrey1@gmail.com,YES,1221,CUS0084,,2,True,2024-06-05T13:27:44.324Z
+301369a7-a6be-497a-a2ea-3621de435014,TKM Bengard,bbasore@tkmfarms.com,YES,1220,CUS0083,,0,True,2024-06-05T13:27:44.317Z
+98528d47-29d8-4f2d-b526-e3d2a78872ea,Threemile Canyon Farms,APFarm@rdoffutt.com,YES,1219,CUS0082,,1,True,2024-06-05T13:27:44.310Z
+3e8ab464-a90e-400a-be2c-2501300db412,The Pictsweet Company,jeremy.green@pictsweet.com,YES,1218,CUS0081,,1,True,2024-06-05T13:27:44.303Z
+6f4df173-b9b6-4836-ab60-47c415bf59d4,Terranova Ranch Inc,dcameron@terranovaranchinc.com,YES,1217,CUS0080,,0,True,2024-06-05T13:27:44.297Z
+3f8c224d-8700-4b61-bfbe-d0cd165597c3,Taylor Farming LLC,jpezzini@taylorfarms.com,YES,1216,CUS0079,,1,True,2024-06-05T13:27:44.289Z
+319face0-0488-48d3-9494-2367d7a5da31,Sierra Cascade Nursery,tammy.lyons@sierracascadenursery.com,YES,1215,CUS0078,,1,True,2024-06-05T13:27:44.282Z
+0bda7242-2512-47d1-8625-eb8c4f82cdb6,SCEA Pot au Pin,cl.letierce@planetevegetal.com,YES,1214,CUS0077,,1,True,2024-06-05T13:27:44.276Z
+a26d0751-31c4-43a8-bffe-ea7d88cedd95,SCEA Grand Champ,julien.larrere@fermes-larrere.com,YES,1213,CUS0076,,1,True,2024-06-05T13:27:44.269Z
+8cf46575-3c10-4747-9e97-cb2880fd867e,Sabor Farms LLC,rromero@saborfarms.com,YES,1212,CUS0075,,1,True,2024-06-05T13:27:44.263Z
+10d2a1f8-316f-4a0b-8a0d-e35b2e1ffb4e,S&SO Product,mark@ssoproduce.com,YES,1211,CUS0074,,0,True,2024-06-05T13:27:44.256Z
+e25ab752-339b-4643-b78e-8b7dc06c555d,S&C Ranching Inc,bruce@sko-con.com,YES,1210,CUS0073,,1,True,2024-06-05T13:27:44.249Z
+be2f35af-f539-45d6-98fd-6093eaa24d01,Roth Farms,ryan@rothfarms.com,YES,1209,CUS0072,,1,True,2024-06-05T13:27:44.243Z
+e5ac3e9c-552f-46a0-849d-5b06673429f7,Roboltics B.V,thijs@boltha.nl,YES,1208,CUS0071,,1,True,2024-06-05T13:27:44.235Z
+cdbfa74b-9753-4519-9c34-ce04475ca9b4,Rio Farms LLC,,YES,1207,CUS0070,,1,True,2024-06-05T13:27:44.229Z
+c477c39c-1610-431f-b5db-a3c963470eb2,Refco Farms,,YES,1206,CUS0069,,0,True,2024-06-05T13:27:44.222Z
+6d45f925-33ad-4262-8c14-d2ebd698286d,Rainbow Ranch LLC,,YES,1205,CUS0068,,0,True,2024-06-05T13:27:44.215Z
+992f7da8-6ab4-4774-b83d-12cb40db6330,R&G Produce LLC,rgproduce@optonline.net,YES,1450,CUS0104,,0,True,2024-06-05T13:27:44.208Z
+5de5ed3a-c7b9-427a-8285-bdb04a7b17e9,Quinn Lift,paul.lavis@quinnlift.com,YES,1204,CUS0067,,0,True,2024-06-05T13:27:44.202Z
+2992180a-f35d-4176-94a8-b5a7c0b224ed,Quail Farms,,YES,1203,CUS0066,,0,True,2024-06-05T13:27:44.195Z
+307ddf72-2cb2-43b6-8154-fbc65bfe7533,Panziera & Thorp,neil@panzieraandthorp.com,YES,1202,CUS0065,,2,True,2024-06-05T13:27:44.188Z
+81ab8cc0-e1ce-4f43-ad22-76471032d868,Owens AG,owensrk@gmail.com,YES,1201,CUS0064,,0,True,2024-06-05T13:27:44.181Z
+c45b7281-071c-460c-a9ea-ac0f99007472,Organic Land Clearing,organiclandclearing@gmail.com,YES,1200,CUS0063,,0,True,2024-06-05T13:27:44.175Z
+6c3f822d-fa71-4626-b7b7-0d69cf202ad2,Oceano Packing Co,steve@oceanopacking.net,YES,1199,CUS0062,,1,True,2024-06-05T13:27:44.169Z
+a8b5eb91-b86b-42fb-b650-1fc21ef8255d,Obendorf Farms,phil@obendorfhop.com,YES,1198,CUS0061,,2,True,2024-06-05T13:27:44.159Z
+d86ff32c-00bc-4439-886f-2e6f6dde6b0b,"Northland Capital Financial Services, LLC",sales@northlandcapital.com,YES,1197,CUS0060,,0,True,2024-06-05T13:27:44.151Z
+e2b6943a-32a0-4fac-a256-ac5e5050e7af,Noonday Farms LLC,r.huizinga@heartyfresh.com,YES,1196,CUS0059,,1,True,2024-06-05T13:27:44.144Z
+71fe36b4-3f6b-434f-9ec8-19c678a6c1bf,Munn Farms,ryan@rmunnfarms.com,YES,1195,CUS0058,,0,True,2024-06-05T13:27:44.138Z
+4ff02567-8b34-455f-819a-d1955ad2e926,Morada Produce,skip@moradaproduce.com,YES,1194,CUS0057,,0,True,2024-06-05T13:27:44.131Z
+bd3f6e83-798d-438b-9fbb-808ed0a5510f,"Mercer Ranches, Inc.",jerryf@mercerranches.com,YES,1193,CUS0056,,1,True,2024-06-05T13:27:44.124Z
+092fb060-56b2-46e0-81d8-41f445228e76,Marolda Farms (Sweetvine),maroldafarmfresh@gmail.com,YES,1192,CUS0055,,0,True,2024-06-05T13:27:44.116Z
+2d8a0148-321e-4ee0-9a61-195e8bd38d47,Maraichers Bec Sucre,info@cmeguinois.com,YES,1191,CUS0054,,0,True,2024-06-05T13:27:44.109Z
+639df525-4e09-425c-ba25-9891e1fac4b2,Mandujano Brothers,mandujanobros@hotmail.com,YES,1190,CUS0053,,1,True,2024-06-05T13:27:44.102Z
+413170b3-4ba2-4e22-a4b6-7faadf0f91e3,Lucky Farms,glsboffice@gmail.com,YES,1189,CUS0052,,1,True,2024-06-05T13:27:44.095Z
+1f33eb5c-ffe6-4fd2-82fc-0400dfb9fb22,Launel AG,mklorzen@gmail.com,YES,1187,CUS0050,,1,True,2024-06-05T13:27:44.081Z
+c6611ccc-0c83-4ab4-baad-3d4c2ee3dc14,Laser Weeder LLC,shay@owyheeproduce.com,YES,1186,CUS0049,,2,True,2024-06-05T13:27:44.075Z
+32734192-cb75-4cb7-8a63-7ca066c23ee4,Lady Moon Farms,patrick@ladymoonfarms.com,YES,1185,CUS0048,,0,True,2024-06-05T13:27:44.068Z
+c952adc0-2225-4dab-8859-51eaae528955,Kludt Brothers Inc.,matt@kludtfarms.com,YES,1184,CUS0047,,1,True,2024-06-05T13:27:44.059Z
+4636a08a-fd02-4443-9e37-c731b91d14c0,Kerr Farms Limited,bob@kerrfarm.ca,YES,1183,CUS0046,,1,True,2024-06-05T13:27:44.052Z
+4da06f7d-f2c1-417c-adcc-07d62b9aba5f,Kehoe Lake Farms LTD,adrian@klfarms.ca,YES,1182,CUS0045,,1,True,2024-06-05T13:27:44.040Z
+daa71346-38e1-4650-8ac5-c7f705ce5b8d,JSH Farms (OR),carl@jshfarms.com,YES,1181,CUS0044,,0,True,2024-06-05T13:27:44.033Z
+cace8e38-ee28-4e03-bb3a-9af5b854400a,John Tobias Farms,mark@tobiasfarms.com,YES,1180,CUS0043,,1,True,2024-06-05T13:27:44.024Z
+d9872dfc-ef56-4899-b3c9-7a6b5d37f28a,J&M McCarty (OR),brandymccarty@wildblue.net,YES,1179,CUS0042,,0,True,2024-06-05T13:27:44.016Z
+6378c040-ea74-48f8-ab3a-2c4644f67d02,Hungenberg Produce Inc,jordan@hungenbergproduce.com,YES,1178,CUS0041,,1,True,2024-06-05T13:27:44.007Z
+2a035bcb-052b-488e-8678-e9560a28be0b,Groentenkwekerij A van den Einden,adrie@vdeinden.nl,YES,1177,CUS0040,,1,True,2024-06-05T13:27:44.000Z
+ce92b60f-1df1-4215-bee7-59badae5d494,Grimmway Enterprises,jmorrison@grimmway.com,YES,1176,CUS0039,,1,True,2024-06-05T13:27:43.994Z
+54b58160-4db7-45bb-99d7-d5b03f5e54a9,GreenLeaf Acres,greenleafacres@hotmail.com,YES,1175,CUS0038,,1,True,2024-06-05T13:27:43.987Z
+d2f66676-87b0-4164-81df-d6cb2c775f40,Gouw Farms,bso@gqo.ca,YES,1174,CUS0037,,1,True,2024-06-05T13:27:43.978Z
+6233e261-530f-47de-90ef-2a394d78be34,Goathead Ag,goatheadag@yahoo.com,YES,1173,CUS0036,,1,True,2024-06-05T13:27:43.970Z
+ab2cd39d-e45d-491c-bc45-e819e6234725,GK Machine Inc,ap@gkmachine.com,YES,1172,CUS0035,,0,True,2024-06-05T13:27:43.960Z
+027c67a3-d215-480d-9354-2a849fcbdccb,Gila Valley Farms,jeff@gilavalleyfarms.com,YES,1171,CUS0034,,0,True,2024-06-05T13:27:43.952Z
+2e6e5062-1b1f-4c8b-b1b4-14cfbcd89c59,George Amaral Ranches,Mike@amaralranches.com,YES,1170,CUS0033,,1,True,2024-06-05T13:27:43.941Z
+0b1139db-fd79-453e-a386-e60f49f849b6,Gemüsebau Großhans,d.grosshans@gemuesebau-grosshans.de,YES,1169,CUS0032,,2,True,2024-06-05T13:27:43.934Z
+55f3b9c2-881b-4d91-ba3f-fe8e12f0e485,Gasa Odense Frugt - GRØNT. A.M.B.A Driftfonden,nen@limfjords.com,YES,1168,CUS0031,,1,True,2024-06-05T13:27:43.927Z
+9da402c9-14a2-455b-a384-43d34bd31973,Gasa Nord Grønt A.m.b.A (GNG),lch@gng.dk,YES,1167,CUS0030,,1,True,2024-06-05T13:27:43.920Z
+0f94da13-6b32-4970-a776-c3e3da79bf05,Gary and Karen Jackson Farms,gjackson@jacksonseminolefarms.com,YES,1166,CUS0029,,1,True,2024-06-05T13:27:43.912Z
+d4cda366-b43c-4ae5-b58a-11a0b3cd86c1,Farm Credit Leasing Services Corporation,,YES,1165,CUS0028,,0,True,2024-06-05T13:27:43.900Z
+8e7c0f94-3b1c-4c18-90ef-a84f466313b5,Fagerberg Produce Co,brian@fagerbergproduce.com,YES,1164,CUS0027,,0,True,2024-06-05T13:27:43.893Z
+081acb69-fbe0-476b-a776-e4bb65e8fd7a,Duncan Family Farms LLC,ryan.borer@duncanfamilyfarms.net,YES,1163,CUS0026,,1,True,2024-06-05T13:27:43.885Z
+fb2f63d1-957c-4782-9526-3032a9532b3f,Don Chapman Farms LTD,josephdchapman@gmail.com,YES,1162,CUS0025,,0,True,2024-06-05T13:27:43.876Z
+7c4ad6ea-ec9c-4e32-a7f2-dd218974415f,Dolling Produce Pty Ltd,jarryd@dollingproduce.com.au,YES,1161,CUS0024,,1,True,2024-06-05T13:27:43.868Z
+abf1125f-b0b6-45c3-98c1-95bf6404b476,"Dobler & Sons, LLC",bdobler@doblerandsons.com,YES,1160,CUS0023,,1,True,2024-06-05T13:27:43.861Z
+ed14d80a-c4b4-440d-901f-03fd414a1d13,Dickman Farms Inc.,coreymdickman@gmail.com,YES,1159,CUS0022,,1,True,2024-06-05T13:27:43.853Z
+3be6788f-10bf-4128-a73c-5225c2ed910c,Delfland Inc.,guillaume@delfland.ca,YES,1158,CUS0021,,0,False,2024-06-05T13:27:43.845Z
+4e5ae1ae-c67c-467b-9dcd-75dfd68639bb,Dean Kincaid Inc,kincaidwi@gmail.com,YES,1157,CUS0020,,1,True,2024-06-05T13:27:43.837Z
+2f14ec46-d151-4bf7-be3e-3dcb76365259,D'Arrigo Bros,sergio.casillas@darrigo.com,YES,1156,CUS0019,,1,True,2024-06-05T13:27:43.830Z
+1c83ea5c-ae04-46dc-985d-f42c0a73221e,Costa Farms Inc.,david@costafarmsinc.com,YES,1155,CUS0018,,1,True,2024-06-05T13:27:43.823Z
+ef7268ef-bf75-42fa-93b1-f1db5e1b192d,Cooperatieve Rabobank,,YES,1154,CUS0017,,0,True,2024-06-05T13:27:43.815Z
+2dcc16b7-693d-4b30-9cfb-05b3c8ce4de7,Clear Creek Acres,cory.clearcreekacres@gmail.com,YES,1153,CUS0016,,2,True,2024-06-05T13:27:43.807Z
+74a92340-f8e6-4303-8f1b-150336a00fbe,Christensen & Giannini LLC,dgiannini@christensenandgiannini.com,YES,1152,CUS0015,,1,True,2024-06-05T13:27:43.800Z
+b8bed325-37ae-4783-a9a7-7da3bba86b8b,CBS Ag,alancleaver@cbsag.com,YES,1151,CUS0014,,1,True,2024-06-05T13:27:43.791Z
+7b456ee9-e636-4eef-80dc-da52b8d9a516,Carta,,YES,1150,CUS0013,,1,True,2024-06-05T13:27:43.782Z
+9a9cbe9b-4772-4bdc-bb2f-628526746ce1,Bybee Farms,neal@bybeefarms.com,YES,1149,CUS0012,,0,True,2024-06-05T13:27:43.773Z
+6e8db796-754d-4e77-a9c6-3183e6cd022a,Braga Fresh Family Farms Inc,rod@bragafresh.com,YES,1148,CUS0011,,1,True,2024-06-05T13:27:43.766Z
+55ef49b9-3ee4-4c02-8bf1-602830a4973c,Bolthouse,Lisandro.duenas@bolthouse.com,YES,1147,CUS0010,,2,True,2024-06-05T13:27:43.758Z
+3a3205c8-8408-47b1-8207-969c7529bb48,Bio Brothers BV,johan@tielengroentenbv.nl,YES,1146,CUS0009,,1,True,2024-06-05T13:27:43.751Z
+24fa8def-a018-4a95-82ff-0fbd6d86d954,Basin Farms,dans@strebin.com,YES,1145,CUS0008,,2,True,2024-06-05T13:27:43.742Z
+0c94216f-2146-430f-b9b3-cdb523e7da07,Balle Brothers,eamon.balle@ballebros.co.nz,YES,1144,CUS0007,,1,True,2024-06-05T13:27:43.734Z
+ac77372d-c93e-493e-b392-b826ea96ba71,Andersen Organics,brian@andersenorganics.com,YES,1143,CUS0006,,2,True,2024-06-05T13:27:43.724Z
+45a1003b-5558-4c04-8d1f-d5f1cbec0539,Amigo Farms,bwilliams@amigofarms.com,YES,1142,CUS0005,,0,True,2024-06-05T13:27:43.716Z
+da040a31-fae4-4a73-9cca-a3c2da79849d,AA Carrots LTD,ross@aacarrots.co.uk,YES,1141,CUS0004,,1,True,2024-06-05T13:27:43.708Z
+75baf7d7-5fa4-4272-af31-348c919a0ad0,A&M International Trading Inc.,jc95@yahoo.com,YES,1140,CUS0003,,2,True,2024-06-05T13:27:43.700Z
+7764c8de-0656-477e-83d9-2a6c88ac5fba,9256-9672 Québec Inc.,benoit@fermebenjo.ca,YES,1040,CUS0002,,2,True,2024-06-05T13:27:43.668Z
+216cf874-adde-4e40-a820-6e568df3ec90,Landgut Nemt,christoph.dobelt@landgut-nemt.de,NO,,,,1,True,2025-12-01T09:51:41.648Z
+3c426acb-8066-45e5-8fe8-a00867e681ae,Rhone Bio,y.etter@rhonebio.ch,NO,,,,1,True,2025-11-24T09:09:12.390Z
+35e65473-df51-471c-a66e-90570284e772,Koetsenruijter ,gkoetsen@hotmail.com,NO,,,,1,True,2025-11-24T08:45:59.720Z
+703292ee-404a-43e3-b265-2261594a226a,Boettcher Gartenbau,s.boettcher@boettcher-gartenbau.de,NO,,,,1,True,2025-10-31T10:47:35.043Z
+a162c4d0-018d-411b-8c2e-184691dd8daf,Henrich Vinnen GbR,hvinnen@gmail.com,NO,,,,1,True,2025-10-30T22:21:15.817Z
+c446236a-e9d0-408d-b39c-cb477d9f88b4,Schäfer / Meyer GmbH,kontakt@bio-feldgemuese.de,NO,,,,1,True,2025-10-23T07:13:32.550Z
+06d74510-6d85-45bb-9969-6db14d3413ff,Cuma Casdi ,didier.rosier981@orange.fr,NO,,,,1,True,2025-10-22T21:34:17.911Z
+4944dc29-03ea-4007-adbf-8bdac0c8216f,Ellenholm & Vadensjö Jordbruks Ab ,info@ellenholm.se,NO,,,,1,True,2025-10-22T11:26:01.158Z
+6bed8191-6a51-4043-9947-18cd986982cc,DanRoots A/S,kve@danroots.com,NO,,,,1,True,2025-10-22T11:02:08.511Z
+39ef305a-5d30-4b03-af34-c6daab93bfb2,Ecotractor del sur,pedro@ecotractor.com,NO,,,,1,True,2025-10-14T09:50:30.854Z
+cbb6080b-44f3-4e5d-9f7c-eccac602090d,County Line Harvest,clharvest@gmail.com,NO,,,,1,True,2025-09-06T15:52:04.740Z
+67ad707a-6b0b-41c1-9e41-b7d39dc4dd89,Leaderbrand ,gordon.mcphail@leaderbrand.co.nz,NO,,,,1,True,2025-08-19T13:08:28.722Z
+3bdeaec0-64ec-4881-bac4-55c64a6920a8,Tkm Bengard Farms LLC,,NO,,,29443713285,1,True,2025-07-30T21:45:54.378Z
+528da124-02ab-4268-bf55-0c26313f9a94,Bio Latina,Biolatina@zuper.com,NO,,,,1,True,2025-07-24T19:55:05.230Z
+ac0feb16-b6c6-41f2-b65a-ba3527eb4c76,Carbon Robotics BV,matiasb@carbonrobotics.com,NO,,,,3,True,2025-06-19T07:29:07.244Z
+8f7c44f2-2374-4bb9-95c9-0a3d76ec0f16,Svihel Vegetable Farm,,NO,,,30482831758,1,False,2025-05-24T20:55:11.734Z
+0d28c74a-00ef-4cb2-b1f9-68faf1e67f41,Huerta de Peralta S.A.T 413,Huerta@zuper.com,NO,,,,1,True,2025-04-05T07:38:15.268Z
+4c4d4aa6-b4d9-4859-969d-ac6e44b78778,Chris test company,,NO,,,30145573515,1,True,2025-02-25T21:49:18.206Z
+66714894-e65f-4f49-8356-ef0e3f36a0b6,Carbon Robotics,,NO,,,,30,True,2024-06-10T16:11:26.186Z
