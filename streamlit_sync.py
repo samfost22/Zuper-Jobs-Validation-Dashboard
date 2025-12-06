@@ -21,7 +21,7 @@ class ZuperSync:
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
         self.headers = {
-            'Authorization': f'Bearer {api_key}',
+            'x-api-key': api_key,
             'Content-Type': 'application/json'
         }
     
@@ -135,7 +135,7 @@ def test_api_connection(api_key: str, base_url: str) -> bool:
     """Test if API credentials are valid"""
     try:
         headers = {
-            'Authorization': f'Bearer {api_key}',
+            'x-api-key': api_key,
             'Content-Type': 'application/json'
         }
         url = f"{base_url.rstrip('/')}/api/jobs?limit=1"
