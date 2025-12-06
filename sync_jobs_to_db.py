@@ -228,17 +228,26 @@ def sync_jobs_to_database(jobs):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    # Clean up excluded job categories from previous syncs
-    excluded_categories = ['Special Job Request', 'Field Retrofit']
-    print(f"Cleaning up excluded job categories: {', '.join(excluded_categories)}...")
-    placeholders = ','.join('?' * len(excluded_categories))
+    # Define allowed job categories (ALLOWLIST approach)
+    allowed_categories = [
+        'LaserWeeder Service Call',
+        'WM Service - In Field',
+        'WM Repair - In Shop'
+    ]
+    print(f"Filtering for allowed job categories: {', '.join(allowed_categories)}")
+
+    # Clean up jobs not in allowed categories from previous syncs
+    placeholders = ','.join('?' * len(allowed_categories))
     cursor.execute(f"""
-        DELETE FROM jobs WHERE job_category IN ({placeholders})
-    """, excluded_categories)
+        DELETE FROM jobs WHERE job_category NOT IN ({placeholders})
+    """, allowed_categories)
     deleted_count = cursor.rowcount
     if deleted_count > 0:
-        print(f"  Deleted {deleted_count} jobs from excluded categories")
+        print(f"  Deleted {deleted_count} jobs from non-allowed categories")
     conn.commit()
+
+    # Track all unique categories encountered (for detecting changes)
+    categories_found = set()
 
     # Start sync log
     cursor.execute("""
@@ -248,6 +257,7 @@ def sync_jobs_to_database(jobs):
     sync_id = cursor.lastrowid
 
     jobs_processed = 0
+    jobs_skipped = 0
     flags_created = 0
     errors = []
     organizations_synced = set()
@@ -258,10 +268,14 @@ def sync_jobs_to_database(jobs):
             if not job_uid:
                 continue
 
-            # Skip excluded job categories
+            # Get and track job category
             job_category = get_job_category(job)
-            excluded_categories = ['special job request', 'field retrofit']
-            if job_category and any(excluded in job_category.lower() for excluded in excluded_categories):
+            if job_category:
+                categories_found.add(job_category)
+
+            # Only process jobs in allowed categories
+            if job_category not in allowed_categories:
+                jobs_skipped += 1
                 continue
 
             # Extract organization data
@@ -432,9 +446,25 @@ def sync_jobs_to_database(jobs):
 
     print(f"\n✓ Sync complete!")
     print(f"  Jobs processed: {jobs_processed}")
+    print(f"  Jobs skipped: {jobs_skipped}")
     print(f"  Validation flags created: {flags_created}")
     if errors:
         print(f"  Errors: {len(errors)}")
+
+    # Report all job categories found (for detecting unexpected changes)
+    print(f"\n📊 Job categories found in API:")
+    for category in sorted(categories_found):
+        status = "✓ ALLOWED" if category in allowed_categories else "⚠️  SKIPPED"
+        print(f"  {status}: {category}")
+
+    # Warn about unexpected categories
+    unexpected_categories = categories_found - set(allowed_categories)
+    if unexpected_categories:
+        print(f"\n⚠️  WARNING: Found {len(unexpected_categories)} unexpected job categories!")
+        print(f"  These categories are being SKIPPED and NOT synced to database:")
+        for category in sorted(unexpected_categories):
+            print(f"    - {category}")
+        print(f"  If these should be included, update the allowed_categories list in sync_jobs_to_db.py")
 
     return jobs_processed, flags_created
 
