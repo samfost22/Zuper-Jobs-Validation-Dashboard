@@ -34,8 +34,17 @@ if 'team_filter' not in st.session_state:
     st.session_state.team_filter = ''
 
 
+def ensure_database_exists():
+    """Initialize database if it doesn't exist"""
+    import os
+    if not os.path.exists(DB_FILE):
+        from streamlit_sync import init_database
+        init_database()
+
+
 def get_db_connection():
     """Get database connection"""
+    ensure_database_exists()
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
@@ -43,161 +52,182 @@ def get_db_connection():
 
 def get_metrics():
     """Get dashboard metrics"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Total jobs
-    cursor.execute("SELECT COUNT(*) as total FROM jobs")
-    total_jobs = cursor.fetchone()['total']
-    
-    # Jobs with parts replaced but no line items
-    cursor.execute("""
-        SELECT COUNT(DISTINCT job_uid) as count
-        FROM validation_flags
-        WHERE flag_type = 'parts_replaced_no_line_items'
-        AND is_resolved = 0
-    """)
-    parts_no_items_count = cursor.fetchone()['count']
-    
-    # Jobs with line items but missing NetSuite ID
-    cursor.execute("""
-        SELECT COUNT(DISTINCT job_uid) as count
-        FROM validation_flags
-        WHERE flag_type = 'missing_netsuite_id'
-        AND is_resolved = 0
-    """)
-    missing_netsuite_count = cursor.fetchone()['count']
-    
-    # Jobs passing all validations
-    cursor.execute("""
-        SELECT COUNT(*) as count
-        FROM jobs j
-        LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
-        WHERE vf.id IS NULL
-    """)
-    passing_count = cursor.fetchone()['count']
-    
-    conn.close()
-    
-    return {
-        'total_jobs': total_jobs,
-        'parts_no_items_count': parts_no_items_count,
-        'missing_netsuite_count': missing_netsuite_count,
-        'passing_count': passing_count
-    }
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Total jobs
+        cursor.execute("SELECT COUNT(*) as total FROM jobs")
+        total_jobs = cursor.fetchone()['total']
+
+        # Jobs with parts replaced but no line items
+        cursor.execute("""
+            SELECT COUNT(DISTINCT job_uid) as count
+            FROM validation_flags
+            WHERE flag_type = 'parts_replaced_no_line_items'
+            AND is_resolved = 0
+        """)
+        parts_no_items_count = cursor.fetchone()['count']
+
+        # Jobs with line items but missing NetSuite ID
+        cursor.execute("""
+            SELECT COUNT(DISTINCT job_uid) as count
+            FROM validation_flags
+            WHERE flag_type = 'missing_netsuite_id'
+            AND is_resolved = 0
+        """)
+        missing_netsuite_count = cursor.fetchone()['count']
+
+        # Jobs passing all validations
+        cursor.execute("""
+            SELECT COUNT(*) as count
+            FROM jobs j
+            LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
+            WHERE vf.id IS NULL
+        """)
+        passing_count = cursor.fetchone()['count']
+
+        conn.close()
+
+        return {
+            'total_jobs': total_jobs,
+            'parts_no_items_count': parts_no_items_count,
+            'missing_netsuite_count': missing_netsuite_count,
+            'passing_count': passing_count
+        }
+    except Exception as e:
+        # Return zeros if database is empty or has issues
+        return {
+            'total_jobs': 0,
+            'parts_no_items_count': 0,
+            'missing_netsuite_count': 0,
+            'passing_count': 0
+        }
 
 
 def get_jobs(filter_type='all', page=1, month='', organization='', team='', limit=50):
     """Get jobs list with filtering and pagination"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    offset = (page - 1) * limit
-    
-    # Build filter clauses
-    filter_clauses = []
-    
-    if month:
-        filter_clauses.append(f"(strftime('%Y-%m', COALESCE(j.completed_at, j.created_at)) = '{month}')")
-    
-    if organization:
-        filter_clauses.append(f"j.organization_name LIKE '%{organization}%'")
-    
-    if team:
-        filter_clauses.append(f"j.service_team LIKE '%{team}%'")
-    
-    date_clause = ("AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
-    
-    # Build query based on filter
-    if filter_type == 'parts_no_items':
-        query = f"""
-            SELECT DISTINCT j.*, vf.flag_message, vf.flag_type
-            FROM jobs j
-            JOIN validation_flags vf ON j.job_uid = vf.job_uid
-            WHERE vf.flag_type = 'parts_replaced_no_line_items'
-            AND vf.is_resolved = 0
-            {date_clause}
-            ORDER BY j.created_at DESC
-            LIMIT ? OFFSET ?
-        """
-    elif filter_type == 'missing_netsuite':
-        query = f"""
-            SELECT DISTINCT j.*, vf.flag_message, vf.flag_type
-            FROM jobs j
-            JOIN validation_flags vf ON j.job_uid = vf.job_uid
-            WHERE vf.flag_type = 'missing_netsuite_id'
-            AND vf.is_resolved = 0
-            {date_clause}
-            ORDER BY j.created_at DESC
-            LIMIT ? OFFSET ?
-        """
-    elif filter_type == 'passing':
-        query = f"""
-            SELECT j.*, NULL as flag_message, NULL as flag_type
-            FROM jobs j
-            LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
-            WHERE vf.id IS NULL
-            {date_clause}
-            ORDER BY j.created_at DESC
-            LIMIT ? OFFSET ?
-        """
-    else:  # all
-        query = f"""
-            SELECT j.*, vf.flag_message, vf.flag_type
-            FROM jobs j
-            LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
-            WHERE 1=1
-            {date_clause}
-            ORDER BY j.created_at DESC
-            LIMIT ? OFFSET ?
-        """
-    
-    cursor.execute(query, (limit, offset))
-    jobs = [dict(row) for row in cursor.fetchall()]
-    
-    # Get total count
-    if filter_type == 'parts_no_items':
-        count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid WHERE vf.flag_type = 'parts_replaced_no_line_items' AND vf.is_resolved = 0 {date_clause}"
-    elif filter_type == 'missing_netsuite':
-        count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid WHERE vf.flag_type = 'missing_netsuite_id' AND vf.is_resolved = 0 {date_clause}"
-    elif filter_type == 'passing':
-        count_query = f"SELECT COUNT(*) FROM jobs j LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0 WHERE vf.id IS NULL {date_clause}"
-    else:
-        count_where = f"WHERE {date_clause[4:]}" if date_clause else ""
-        count_query = f"SELECT COUNT(*) FROM jobs j {count_where}"
-    
-    cursor.execute(count_query)
-    total_count = cursor.fetchone()[0]
-    
-    conn.close()
-    
-    return jobs, total_count
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        offset = (page - 1) * limit
+    except:
+        # Return empty result if database has issues
+        return [], 0
+
+    try:
+        # Build filter clauses
+        filter_clauses = []
+
+        if month:
+            filter_clauses.append(f"(strftime('%Y-%m', COALESCE(j.completed_at, j.created_at)) = '{month}')")
+
+        if organization:
+            filter_clauses.append(f"j.organization_name LIKE '%{organization}%'")
+
+        if team:
+            filter_clauses.append(f"j.service_team LIKE '%{team}%'")
+
+        date_clause = ("AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
+
+        # Build query based on filter
+        if filter_type == 'parts_no_items':
+            query = f"""
+                SELECT DISTINCT j.*, vf.flag_message, vf.flag_type
+                FROM jobs j
+                JOIN validation_flags vf ON j.job_uid = vf.job_uid
+                WHERE vf.flag_type = 'parts_replaced_no_line_items'
+                AND vf.is_resolved = 0
+                {date_clause}
+                ORDER BY j.created_at DESC
+                LIMIT ? OFFSET ?
+            """
+        elif filter_type == 'missing_netsuite':
+            query = f"""
+                SELECT DISTINCT j.*, vf.flag_message, vf.flag_type
+                FROM jobs j
+                JOIN validation_flags vf ON j.job_uid = vf.job_uid
+                WHERE vf.flag_type = 'missing_netsuite_id'
+                AND vf.is_resolved = 0
+                {date_clause}
+                ORDER BY j.created_at DESC
+                LIMIT ? OFFSET ?
+            """
+        elif filter_type == 'passing':
+            query = f"""
+                SELECT j.*, NULL as flag_message, NULL as flag_type
+                FROM jobs j
+                LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
+                WHERE vf.id IS NULL
+                {date_clause}
+                ORDER BY j.created_at DESC
+                LIMIT ? OFFSET ?
+            """
+        else:  # all
+            query = f"""
+                SELECT j.*, vf.flag_message, vf.flag_type
+                FROM jobs j
+                LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
+                WHERE 1=1
+                {date_clause}
+                ORDER BY j.created_at DESC
+                LIMIT ? OFFSET ?
+            """
+
+        cursor.execute(query, (limit, offset))
+        jobs = [dict(row) for row in cursor.fetchall()]
+
+        # Get total count
+        if filter_type == 'parts_no_items':
+            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid WHERE vf.flag_type = 'parts_replaced_no_line_items' AND vf.is_resolved = 0 {date_clause}"
+        elif filter_type == 'missing_netsuite':
+            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid WHERE vf.flag_type = 'missing_netsuite_id' AND vf.is_resolved = 0 {date_clause}"
+        elif filter_type == 'passing':
+            count_query = f"SELECT COUNT(*) FROM jobs j LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0 WHERE vf.id IS NULL {date_clause}"
+        else:
+            count_where = f"WHERE {date_clause[4:]}" if date_clause else ""
+            count_query = f"SELECT COUNT(*) FROM jobs j {count_where}"
+
+        cursor.execute(count_query)
+        total_count = cursor.fetchone()[0]
+
+        conn.close()
+
+        return jobs, total_count
+    except Exception as e:
+        # Return empty result on error
+        return [], 0
 
 
 def get_filter_options():
     """Get available filter options"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT DISTINCT organization_name
-        FROM jobs
-        WHERE organization_name IS NOT NULL AND organization_name != ''
-        ORDER BY organization_name
-    """)
-    organizations = [row['organization_name'] for row in cursor.fetchall()]
-    
-    cursor.execute("""
-        SELECT DISTINCT service_team
-        FROM jobs
-        WHERE service_team IS NOT NULL AND service_team != ''
-        ORDER BY service_team
-    """)
-    teams = [row['service_team'] for row in cursor.fetchall()]
-    
-    conn.close()
-    
-    return organizations, teams
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT DISTINCT organization_name
+            FROM jobs
+            WHERE organization_name IS NOT NULL AND organization_name != ''
+            ORDER BY organization_name
+        """)
+        organizations = [row['organization_name'] for row in cursor.fetchall()]
+
+        cursor.execute("""
+            SELECT DISTINCT service_team
+            FROM jobs
+            WHERE service_team IS NOT NULL AND service_team != ''
+            ORDER BY service_team
+        """)
+        teams = [row['service_team'] for row in cursor.fetchall()]
+
+        conn.close()
+
+        return organizations, teams
+    except:
+        # Return empty lists if database has issues
+        return [], []
 
 
 def mark_job_good(job_uid):
