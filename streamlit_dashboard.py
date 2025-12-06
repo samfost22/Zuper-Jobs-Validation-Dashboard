@@ -32,6 +32,12 @@ if 'org_filter' not in st.session_state:
     st.session_state.org_filter = ''
 if 'team_filter' not in st.session_state:
     st.session_state.team_filter = ''
+if 'start_date' not in st.session_state:
+    st.session_state.start_date = None
+if 'end_date' not in st.session_state:
+    st.session_state.end_date = None
+if 'job_number_search' not in st.session_state:
+    st.session_state.job_number_search = ''
 
 
 def ensure_database_exists():
@@ -105,7 +111,7 @@ def get_metrics():
         }
 
 
-def get_jobs(filter_type='all', page=1, month='', organization='', team='', limit=50):
+def get_jobs(filter_type='all', page=1, month='', organization='', team='', start_date=None, end_date=None, job_number='', limit=50):
     """Get jobs list with filtering and pagination"""
     try:
         conn = get_db_connection()
@@ -120,7 +126,14 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', limi
         # Build filter clauses
         filter_clauses = []
 
-        if month:
+        # Job number search (exact or partial match)
+        if job_number:
+            filter_clauses.append(f"j.job_number LIKE '%{job_number}%'")
+
+        # Date range filter (takes precedence over month filter)
+        if start_date and end_date:
+            filter_clauses.append(f"(date(COALESCE(j.completed_at, j.created_at)) BETWEEN '{start_date}' AND '{end_date}')")
+        elif month:
             filter_clauses.append(f"(strftime('%Y-%m', COALESCE(j.completed_at, j.created_at)) = '{month}')")
 
         if organization:
@@ -327,13 +340,44 @@ with col4:
 # Filters
 organizations, teams = get_filter_options()
 
+# First row: Job number search and date range
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    month_filter = st.selectbox("Month", ["All Months"] + [f"2025-{m:02d}" for m in range(1, 13)], key="month_select")
-    if month_filter != "All Months":
-        st.session_state.month_filter = month_filter
+    job_number_input = st.text_input("🔍 Search Job Number", placeholder="Enter job number...", key="job_number_input")
+    if job_number_input:
+        st.session_state.job_number_search = job_number_input
+        st.session_state.current_page = 1  # Reset to page 1 when searching
     else:
+        st.session_state.job_number_search = ''
+
+with col2:
+    start_date_input = st.date_input("Start Date", value=None, key="start_date_input")
+    if start_date_input:
+        st.session_state.start_date = start_date_input.isoformat()
+    else:
+        st.session_state.start_date = None
+
+with col3:
+    end_date_input = st.date_input("End Date", value=None, key="end_date_input")
+    if end_date_input:
+        st.session_state.end_date = end_date_input.isoformat()
+    else:
+        st.session_state.end_date = None
+
+# Second row: Month, Organization, Service Team
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    # Only show month filter if date range is not set
+    if not (st.session_state.start_date and st.session_state.end_date):
+        month_filter = st.selectbox("Month", ["All Months"] + [f"2025-{m:02d}" for m in range(1, 13)], key="month_select")
+        if month_filter != "All Months":
+            st.session_state.month_filter = month_filter
+        else:
+            st.session_state.month_filter = ''
+    else:
+        st.info("📅 Using date range filter")
         st.session_state.month_filter = ''
 
 with col2:
@@ -356,7 +400,10 @@ jobs, total_count = get_jobs(
     st.session_state.current_page,
     st.session_state.month_filter,
     st.session_state.org_filter,
-    st.session_state.team_filter
+    st.session_state.team_filter,
+    st.session_state.start_date,
+    st.session_state.end_date,
+    st.session_state.job_number_search
 )
 
 st.subheader(f"Jobs ({total_count} total)")
