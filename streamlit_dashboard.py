@@ -38,6 +38,8 @@ if 'end_date' not in st.session_state:
     st.session_state.end_date = None
 if 'job_number_search' not in st.session_state:
     st.session_state.job_number_search = ''
+if 'part_search' not in st.session_state:
+    st.session_state.part_search = ''
 
 
 def ensure_database_exists():
@@ -111,7 +113,7 @@ def get_metrics():
         }
 
 
-def get_jobs(filter_type='all', page=1, month='', organization='', team='', start_date=None, end_date=None, job_number='', limit=50):
+def get_jobs(filter_type='all', page=1, month='', organization='', team='', start_date=None, end_date=None, job_number='', part_search='', limit=50):
     """Get jobs list with filtering and pagination"""
     try:
         conn = get_db_connection()
@@ -144,15 +146,24 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
 
         date_clause = ("AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
 
+        # Add part search join if needed
+        part_join = ""
+        part_where = ""
+        if part_search:
+            part_join = "JOIN job_line_items li ON j.job_uid = li.job_uid"
+            part_where = f"AND (li.item_name LIKE '%{part_search}%' OR li.item_code LIKE '%{part_search}%')"
+
         # Build query based on filter
         if filter_type == 'parts_no_items':
             query = f"""
                 SELECT DISTINCT j.*, vf.flag_message, vf.flag_type
                 FROM jobs j
                 JOIN validation_flags vf ON j.job_uid = vf.job_uid
+                {part_join}
                 WHERE vf.flag_type = 'parts_replaced_no_line_items'
                 AND vf.is_resolved = 0
                 {date_clause}
+                {part_where}
                 ORDER BY j.created_at DESC
                 LIMIT ? OFFSET ?
             """
@@ -161,29 +172,35 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
                 SELECT DISTINCT j.*, vf.flag_message, vf.flag_type
                 FROM jobs j
                 JOIN validation_flags vf ON j.job_uid = vf.job_uid
+                {part_join}
                 WHERE vf.flag_type = 'missing_netsuite_id'
                 AND vf.is_resolved = 0
                 {date_clause}
+                {part_where}
                 ORDER BY j.created_at DESC
                 LIMIT ? OFFSET ?
             """
         elif filter_type == 'passing':
             query = f"""
-                SELECT j.*, NULL as flag_message, NULL as flag_type
+                SELECT DISTINCT j.*, NULL as flag_message, NULL as flag_type
                 FROM jobs j
                 LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
+                {part_join}
                 WHERE vf.id IS NULL
                 {date_clause}
+                {part_where}
                 ORDER BY j.created_at DESC
                 LIMIT ? OFFSET ?
             """
         else:  # all
             query = f"""
-                SELECT j.*, vf.flag_message, vf.flag_type
+                SELECT DISTINCT j.*, vf.flag_message, vf.flag_type
                 FROM jobs j
                 LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
+                {part_join}
                 WHERE 1=1
                 {date_clause}
+                {part_where}
                 ORDER BY j.created_at DESC
                 LIMIT ? OFFSET ?
             """
@@ -191,16 +208,16 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
         cursor.execute(query, (limit, offset))
         jobs = [dict(row) for row in cursor.fetchall()]
 
-        # Get total count
+        # Get total count (with part search if applicable)
         if filter_type == 'parts_no_items':
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid WHERE vf.flag_type = 'parts_replaced_no_line_items' AND vf.is_resolved = 0 {date_clause}"
+            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid {part_join} WHERE vf.flag_type = 'parts_replaced_no_line_items' AND vf.is_resolved = 0 {date_clause} {part_where}"
         elif filter_type == 'missing_netsuite':
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid WHERE vf.flag_type = 'missing_netsuite_id' AND vf.is_resolved = 0 {date_clause}"
+            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid {part_join} WHERE vf.flag_type = 'missing_netsuite_id' AND vf.is_resolved = 0 {date_clause} {part_where}"
         elif filter_type == 'passing':
-            count_query = f"SELECT COUNT(*) FROM jobs j LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0 WHERE vf.id IS NULL {date_clause}"
+            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0 {part_join} WHERE vf.id IS NULL {date_clause} {part_where}"
         else:
             count_where = f"WHERE {date_clause[4:]}" if date_clause else ""
-            count_query = f"SELECT COUNT(*) FROM jobs j {count_where}"
+            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j {part_join} {count_where} {part_where if part_search else ''}"
 
         cursor.execute(count_query)
         total_count = cursor.fetchone()[0]
@@ -340,11 +357,11 @@ with col4:
 # Filters
 organizations, teams = get_filter_options()
 
-# First row: Job number search and date range
-col1, col2, col3 = st.columns(3)
+# First row: Job number search, Part search, and date range
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    job_number_input = st.text_input("🔍 Search Job Number", placeholder="Enter job number...", key="job_number_input")
+    job_number_input = st.text_input("🔍 Job Number", placeholder="Enter job number...", key="job_number_input")
     if job_number_input:
         st.session_state.job_number_search = job_number_input
         st.session_state.current_page = 1  # Reset to page 1 when searching
@@ -352,6 +369,14 @@ with col1:
         st.session_state.job_number_search = ''
 
 with col2:
+    part_input = st.text_input("🔧 Part Name/Code", placeholder="Enter part name or code...", key="part_input")
+    if part_input:
+        st.session_state.part_search = part_input
+        st.session_state.current_page = 1  # Reset to page 1 when searching
+    else:
+        st.session_state.part_search = ''
+
+with col3:
     start_date_input = st.date_input("Start Date", value=None, key="start_date_input")
     if start_date_input:
         st.session_state.start_date = start_date_input.isoformat()
@@ -403,7 +428,8 @@ jobs, total_count = get_jobs(
     st.session_state.team_filter,
     st.session_state.start_date,
     st.session_state.end_date,
-    st.session_state.job_number_search
+    st.session_state.job_number_search,
+    st.session_state.part_search
 )
 
 st.subheader(f"Jobs ({total_count} total)")
