@@ -58,6 +58,7 @@ def get_db_connection():
     return conn
 
 
+@st.cache_data(ttl=60)  # Cache for 60 seconds
 def get_metrics():
     """Get dashboard metrics"""
     try:
@@ -113,6 +114,7 @@ def get_metrics():
         }
 
 
+@st.cache_data(ttl=60)  # Cache for 60 seconds
 def get_jobs(filter_type='all', page=1, month='', organization='', team='', start_date=None, end_date=None, job_number='', part_search='', limit=50):
     """Get jobs list with filtering and pagination"""
     try:
@@ -230,6 +232,7 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
         return [], 0
 
 
+@st.cache_data(ttl=60)  # Cache for 60 seconds
 def get_filter_options():
     """Get available filter options"""
     try:
