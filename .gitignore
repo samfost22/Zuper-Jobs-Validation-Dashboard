@@ -5,6 +5,10 @@
 *.db
 *.db-journal
 
+# Data directory (persistent storage)
+data/
+!data/README.md
+
 # Data files
 jobs_data.json
 organizations_data.json
