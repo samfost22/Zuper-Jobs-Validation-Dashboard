@@ -366,30 +366,65 @@ with st.sidebar:
         st.info("Add credentials to `.streamlit/secrets.toml` to enable sync")
     
     if has_credentials:
-        if st.button("🔄 Refresh Data from API", type="primary"):
-            progress_text = st.empty()
-            status_text = st.empty()
+        # Quick Sync - only updated jobs
+        col1, col2 = st.columns(2)
 
-            def progress_callback(msg):
-                progress_text.info(msg)
+        with col1:
+            if st.button("⚡ Quick Sync", type="primary", use_container_width=True, help="Sync only updated jobs since last sync (fast)"):
+                progress_text = st.empty()
+                status_text = st.empty()
 
-            try:
-                status_text.info("🔄 Starting sync...")
-                syncer = ZuperSync(api_key, base_url)
+                def progress_callback(msg):
+                    progress_text.info(msg)
 
-                jobs = syncer.fetch_jobs_from_api(progress_callback)
+                try:
+                    status_text.info("⚡ Starting quick sync...")
+                    syncer = ZuperSync(api_key, base_url)
 
-                # Enrich jobs with asset data from job details API
-                jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
+                    # Fetch only updated jobs
+                    jobs = syncer.fetch_updated_jobs_only(progress_callback)
 
-                stats = syncer.sync_to_database(jobs, progress_callback)
+                    if jobs:
+                        # Enrich jobs with asset data from job details API
+                        jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
 
-                progress_text.empty()
-                status_text.success(f"✅ Synced {stats['total_jobs']} jobs!")
-                st.rerun()
-            except Exception as e:
-                progress_text.empty()
-                status_text.error(f"❌ Sync failed: {e}")
+                        stats = syncer.sync_to_database(jobs, progress_callback)
+
+                        progress_text.empty()
+                        status_text.success(f"✅ Quick sync complete! Updated {len(jobs)} jobs")
+                        st.rerun()
+                    else:
+                        progress_text.empty()
+                        status_text.info("ℹ️ No updates found - data is current!")
+                except Exception as e:
+                    progress_text.empty()
+                    status_text.error(f"❌ Sync failed: {e}")
+
+        with col2:
+            if st.button("🔄 Full Sync", use_container_width=True, help="Sync all jobs from API (slow)"):
+                progress_text = st.empty()
+                status_text = st.empty()
+
+                def progress_callback(msg):
+                    progress_text.info(msg)
+
+                try:
+                    status_text.info("🔄 Starting full sync...")
+                    syncer = ZuperSync(api_key, base_url)
+
+                    jobs = syncer.fetch_jobs_from_api(progress_callback)
+
+                    # Enrich jobs with asset data from job details API
+                    jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
+
+                    stats = syncer.sync_to_database(jobs, progress_callback)
+
+                    progress_text.empty()
+                    status_text.success(f"✅ Synced {stats['total_jobs']} jobs!")
+                    st.rerun()
+                except Exception as e:
+                    progress_text.empty()
+                    status_text.error(f"❌ Sync failed: {e}")
     
     st.divider()
     
