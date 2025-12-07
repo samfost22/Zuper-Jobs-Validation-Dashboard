@@ -40,6 +40,8 @@ if 'job_number_search' not in st.session_state:
     st.session_state.job_number_search = ''
 if 'part_search' not in st.session_state:
     st.session_state.part_search = ''
+if 'serial_search' not in st.session_state:
+    st.session_state.serial_search = ''
 if 'asset_filter' not in st.session_state:
     st.session_state.asset_filter = ''
 
@@ -117,7 +119,7 @@ def get_metrics():
 
 
 @st.cache_data(ttl=60)  # Cache for 60 seconds
-def get_jobs(filter_type='all', page=1, month='', organization='', team='', start_date=None, end_date=None, job_number='', part_search='', asset='', limit=50):
+def get_jobs(filter_type='all', page=1, month='', organization='', team='', start_date=None, end_date=None, job_number='', part_search='', serial_search='', asset='', limit=50):
     """Get jobs list with filtering and pagination"""
     try:
         conn = get_db_connection()
@@ -160,6 +162,22 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
             part_join = "JOIN job_line_items li ON j.job_uid = li.job_uid"
             part_where = f"AND (li.item_name LIKE '%{part_search}%' OR li.item_code LIKE '%{part_search}%')"
 
+        # Add serial number search join if needed
+        serial_join = ""
+        serial_where = ""
+        if serial_search:
+            # Search in both line items and checklist parts
+            serial_join = """
+            LEFT JOIN job_line_items li2 ON j.job_uid = li2.job_uid
+            LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
+            """
+            serial_where = f"AND (li2.item_serial LIKE '%{serial_search}%' OR cp.part_serial LIKE '%{serial_search}%')"
+            # If both part and serial search, combine the joins
+            if part_search:
+                serial_join = "LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid"
+                part_where = f"AND (li.item_name LIKE '%{part_search}%' OR li.item_code LIKE '%{part_search}%' OR li.item_serial LIKE '%{serial_search}%' OR cp.part_serial LIKE '%{serial_search}%')"
+                serial_where = ""
+
         # Build query based on filter
         if filter_type == 'parts_no_items':
             query = f"""
@@ -167,10 +185,12 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
                 FROM jobs j
                 JOIN validation_flags vf ON j.job_uid = vf.job_uid
                 {part_join}
+                {serial_join}
                 WHERE vf.flag_type = 'parts_replaced_no_line_items'
                 AND vf.is_resolved = 0
                 {date_clause}
                 {part_where}
+                {serial_where}
                 ORDER BY j.created_at DESC
                 LIMIT ? OFFSET ?
             """
@@ -180,10 +200,12 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
                 FROM jobs j
                 JOIN validation_flags vf ON j.job_uid = vf.job_uid
                 {part_join}
+                {serial_join}
                 WHERE vf.flag_type = 'missing_netsuite_id'
                 AND vf.is_resolved = 0
                 {date_clause}
                 {part_where}
+                {serial_where}
                 ORDER BY j.created_at DESC
                 LIMIT ? OFFSET ?
             """
@@ -193,9 +215,11 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
                 FROM jobs j
                 LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
                 {part_join}
+                {serial_join}
                 WHERE vf.id IS NULL
                 {date_clause}
                 {part_where}
+                {serial_where}
                 ORDER BY j.created_at DESC
                 LIMIT ? OFFSET ?
             """
@@ -205,9 +229,11 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
                 FROM jobs j
                 LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
                 {part_join}
+                {serial_join}
                 WHERE 1=1
                 {date_clause}
                 {part_where}
+                {serial_where}
                 ORDER BY j.created_at DESC
                 LIMIT ? OFFSET ?
             """
@@ -215,16 +241,16 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
         cursor.execute(query, (limit, offset))
         jobs = [dict(row) for row in cursor.fetchall()]
 
-        # Get total count (with part search if applicable)
+        # Get total count (with part/serial search if applicable)
         if filter_type == 'parts_no_items':
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid {part_join} WHERE vf.flag_type = 'parts_replaced_no_line_items' AND vf.is_resolved = 0 {date_clause} {part_where}"
+            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid {part_join} {serial_join} WHERE vf.flag_type = 'parts_replaced_no_line_items' AND vf.is_resolved = 0 {date_clause} {part_where} {serial_where}"
         elif filter_type == 'missing_netsuite':
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid {part_join} WHERE vf.flag_type = 'missing_netsuite_id' AND vf.is_resolved = 0 {date_clause} {part_where}"
+            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid {part_join} {serial_join} WHERE vf.flag_type = 'missing_netsuite_id' AND vf.is_resolved = 0 {date_clause} {part_where} {serial_where}"
         elif filter_type == 'passing':
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0 {part_join} WHERE vf.id IS NULL {date_clause} {part_where}"
+            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0 {part_join} {serial_join} WHERE vf.id IS NULL {date_clause} {part_where} {serial_where}"
         else:
             count_where = f"WHERE {date_clause[4:]}" if date_clause else ""
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j {part_join} {count_where} {part_where if part_search else ''}"
+            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j {part_join} {serial_join} {count_where} {part_where if part_search or serial_search else ''} {serial_where if serial_search and not part_search else ''}"
 
         cursor.execute(count_query)
         total_count = cursor.fetchone()[0]
@@ -340,30 +366,65 @@ with st.sidebar:
         st.info("Add credentials to `.streamlit/secrets.toml` to enable sync")
     
     if has_credentials:
-        if st.button("🔄 Refresh Data from API", type="primary"):
-            progress_text = st.empty()
-            status_text = st.empty()
+        # Quick Sync - only updated jobs
+        col1, col2 = st.columns(2)
 
-            def progress_callback(msg):
-                progress_text.info(msg)
+        with col1:
+            if st.button("⚡ Quick Sync", type="primary", use_container_width=True, help="Sync only updated jobs since last sync (fast)"):
+                progress_text = st.empty()
+                status_text = st.empty()
 
-            try:
-                status_text.info("🔄 Starting sync...")
-                syncer = ZuperSync(api_key, base_url)
+                def progress_callback(msg):
+                    progress_text.info(msg)
 
-                jobs = syncer.fetch_jobs_from_api(progress_callback)
+                try:
+                    status_text.info("⚡ Starting quick sync...")
+                    syncer = ZuperSync(api_key, base_url)
 
-                # Enrich jobs with asset data from job details API
-                jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
+                    # Fetch only updated jobs
+                    jobs = syncer.fetch_updated_jobs_only(progress_callback)
 
-                stats = syncer.sync_to_database(jobs, progress_callback)
+                    if jobs:
+                        # Enrich jobs with asset data from job details API
+                        jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
 
-                progress_text.empty()
-                status_text.success(f"✅ Synced {stats['total_jobs']} jobs!")
-                st.rerun()
-            except Exception as e:
-                progress_text.empty()
-                status_text.error(f"❌ Sync failed: {e}")
+                        stats = syncer.sync_to_database(jobs, progress_callback)
+
+                        progress_text.empty()
+                        status_text.success(f"✅ Quick sync complete! Updated {len(jobs)} jobs")
+                        st.rerun()
+                    else:
+                        progress_text.empty()
+                        status_text.info("ℹ️ No updates found - data is current!")
+                except Exception as e:
+                    progress_text.empty()
+                    status_text.error(f"❌ Sync failed: {e}")
+
+        with col2:
+            if st.button("🔄 Full Sync", use_container_width=True, help="Sync all jobs from API (slow)"):
+                progress_text = st.empty()
+                status_text = st.empty()
+
+                def progress_callback(msg):
+                    progress_text.info(msg)
+
+                try:
+                    status_text.info("🔄 Starting full sync...")
+                    syncer = ZuperSync(api_key, base_url)
+
+                    jobs = syncer.fetch_jobs_from_api(progress_callback)
+
+                    # Enrich jobs with asset data from job details API
+                    jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
+
+                    stats = syncer.sync_to_database(jobs, progress_callback)
+
+                    progress_text.empty()
+                    status_text.success(f"✅ Synced {stats['total_jobs']} jobs!")
+                    st.rerun()
+                except Exception as e:
+                    progress_text.empty()
+                    status_text.error(f"❌ Sync failed: {e}")
     
     st.divider()
     
@@ -408,8 +469,8 @@ with col4:
 # Filters
 organizations, teams = get_filter_options()
 
-# First row: Job number search, Part search, and date range
-col1, col2, col3, col4 = st.columns(4)
+# First row: Job number search, Part search, Serial search, and date range
+col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
     job_number_input = st.text_input("🔍 Job Number", placeholder="Enter job number...", key="job_number_input")
@@ -428,13 +489,21 @@ with col2:
         st.session_state.part_search = ''
 
 with col3:
+    serial_input = st.text_input("🏷️ Serial Number", placeholder="Enter serial number...", key="serial_input")
+    if serial_input:
+        st.session_state.serial_search = serial_input
+        st.session_state.current_page = 1  # Reset to page 1 when searching
+    else:
+        st.session_state.serial_search = ''
+
+with col4:
     start_date_input = st.date_input("Start Date", value=None, key="start_date_input")
     if start_date_input:
         st.session_state.start_date = start_date_input.isoformat()
     else:
         st.session_state.start_date = None
 
-with col4:
+with col5:
     end_date_input = st.date_input("End Date", value=None, key="end_date_input")
     if end_date_input:
         st.session_state.end_date = end_date_input.isoformat()
@@ -496,6 +565,7 @@ jobs, total_count = get_jobs(
     st.session_state.end_date,
     st.session_state.job_number_search,
     st.session_state.part_search,
+    st.session_state.serial_search,
     st.session_state.asset_filter
 )
 

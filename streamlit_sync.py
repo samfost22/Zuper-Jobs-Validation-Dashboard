@@ -87,6 +87,50 @@ class ZuperSync:
 
         return jobs
 
+    def fetch_updated_jobs_only(self, progress_callback=None) -> List[Dict]:
+        """
+        Fetch only jobs that have been updated since last sync (differential sync)
+        Compares job updated_at timestamps with database synced_at timestamps
+        """
+        if progress_callback:
+            progress_callback("🔍 Checking for updated jobs...")
+
+        # Get last sync time from database
+        try:
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+            cursor.execute("SELECT MAX(synced_at) FROM jobs")
+            result = cursor.fetchone()
+            last_sync = result[0] if result and result[0] else None
+            conn.close()
+
+            if last_sync:
+                if progress_callback:
+                    progress_callback(f"Last sync: {last_sync}")
+        except:
+            last_sync = None
+
+        # Fetch all jobs from API
+        all_jobs = self.fetch_jobs_from_api(progress_callback)
+
+        if not last_sync:
+            # First sync - return all jobs
+            if progress_callback:
+                progress_callback(f"First sync - processing all {len(all_jobs)} jobs")
+            return all_jobs
+
+        # Filter to only jobs updated after last sync
+        updated_jobs = []
+        for job in all_jobs:
+            job_updated = job.get('updated_at') or job.get('created_at')
+            if job_updated and job_updated > last_sync:
+                updated_jobs.append(job)
+
+        if progress_callback:
+            progress_callback(f"Found {len(updated_jobs)} updated jobs (out of {len(all_jobs)} total)")
+
+        return updated_jobs
+
     def fetch_job_details(self, job_uid: str, max_retries: int = 3) -> Tuple[Optional[Dict], Optional[str]]:
         """
         Fetch detailed job information including assets with retry logic
