@@ -8,7 +8,13 @@ import sqlite3
 import pandas as pd
 import json
 from datetime import datetime
+from pathlib import Path
 from streamlit_sync import ZuperSync, test_api_connection
+
+# Use persistent data directory
+DATA_DIR = Path(__file__).parent / 'data'
+DATA_DIR.mkdir(exist_ok=True)
+DB_FILE = str(DATA_DIR / 'jobs_validation.db')
 
 # Page config
 st.set_page_config(
@@ -17,9 +23,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Database file
-DB_FILE = 'jobs_validation.db'
 
 # Initialize session state
 if 'current_filter' not in st.session_state:

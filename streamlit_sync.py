@@ -12,8 +12,12 @@ import requests
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+from pathlib import Path
 
-DB_FILE = 'jobs_validation.db'
+# Use persistent data directory
+DATA_DIR = Path(__file__).parent / 'data'
+DATA_DIR.mkdir(exist_ok=True)
+DB_FILE = str(DATA_DIR / 'jobs_validation.db')
 
 class ZuperSync:
     """Handles syncing Zuper jobs to database with progress callbacks"""
