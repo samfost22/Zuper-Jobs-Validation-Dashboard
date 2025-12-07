@@ -434,7 +434,7 @@ with col3:
     else:
         st.session_state.start_date = None
 
-with col3:
+with col4:
     end_date_input = st.date_input("End Date", value=None, key="end_date_input")
     if end_date_input:
         st.session_state.end_date = end_date_input.isoformat()
