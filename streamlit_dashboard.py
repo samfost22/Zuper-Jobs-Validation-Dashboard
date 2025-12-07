@@ -350,8 +350,12 @@ with st.sidebar:
                 try:
                     syncer = ZuperSync(api_key, base_url)
                     jobs = syncer.fetch_jobs_from_api(progress_callback)
+
+                    # Enrich jobs with asset data from job details API
+                    jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
+
                     stats = syncer.sync_to_database(jobs, progress_callback)
-                    
+
                     st.success(f"✅ Synced {stats['total_jobs']} jobs!")
                     st.rerun()
                 except Exception as e:

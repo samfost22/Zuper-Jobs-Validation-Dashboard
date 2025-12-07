@@ -61,16 +61,22 @@ def extract_serial_from_text(text):
 
     return [m.upper() for m in matches]
 
-def extract_asset_code_from_title(job_title):
-    """Extract asset code from job title (e.g., 'S38:Description' -> 'S38')"""
-    if not job_title:
+def extract_asset_from_job(job):
+    """Extract asset information from job's assets array"""
+    assets = job.get('assets', [])
+
+    if not assets:
         return ''
 
-    # Pattern: S followed by digits at the start, ending with colon
-    # Examples: "S38:", "S8:", "S123:"
-    match = re.match(r'^(S\d+):', str(job_title))
-    if match:
-        return match.group(1)
+    # Take the first asset if multiple exist
+    first_asset = assets[0] if isinstance(assets, list) else assets
+
+    # Navigate the nested structure: assets[0].asset.asset_code or .asset_name
+    if isinstance(first_asset, dict):
+        asset_data = first_asset.get('asset', {})
+        if isinstance(asset_data, dict):
+            # Prefer asset_code (e.g., "S38"), fallback to asset_name
+            return asset_data.get('asset_code', '') or asset_data.get('asset_name', '')
 
     return ''
 
@@ -336,7 +342,7 @@ def sync_jobs_to_database(jobs):
                 organization_uid,
                 organization_name,
                 get_service_team(job),
-                extract_asset_code_from_title(job.get('job_title', '')),
+                extract_asset_from_job(job),
                 job.get('created_at', ''),
                 job.get('updated_at', ''),
                 get_completion_date(job),

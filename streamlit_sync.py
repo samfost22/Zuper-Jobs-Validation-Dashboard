@@ -85,7 +85,58 @@ class ZuperSync:
             progress_callback(f"Fetched {len(jobs)} jobs from API")
 
         return jobs
-    
+
+    def fetch_job_details(self, job_uid: str) -> Optional[Dict]:
+        """Fetch detailed job information including assets"""
+        url = f"{self.base_url}/api/jobs/{job_uid}"
+
+        try:
+            response = requests.get(url, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('type') == 'success':
+                return data.get('data', {})
+        except requests.exceptions.Timeout:
+            return None
+        except requests.exceptions.RequestException:
+            return None
+
+        return None
+
+    def enrich_jobs_with_assets(self, jobs: List[Dict], progress_callback=None) -> List[Dict]:
+        """Enrich job list with asset data from individual job details"""
+        if progress_callback:
+            progress_callback(f"Enriching {len(jobs)} jobs with asset data...")
+
+        enriched_jobs = []
+        total = len(jobs)
+
+        for idx, job in enumerate(jobs):
+            job_uid = job.get('job_uid')
+
+            # Progress update every 100 jobs
+            if progress_callback and (idx + 1) % 100 == 0:
+                progress_callback(f"Enriching jobs: {idx + 1}/{total} ({int((idx + 1)/total * 100)}%)")
+
+            # Fetch job details
+            job_details = self.fetch_job_details(job_uid)
+
+            if job_details and 'assets' in job_details:
+                # Add assets array to the job
+                job['assets'] = job_details.get('assets', [])
+            else:
+                # No assets found
+                job['assets'] = []
+
+            enriched_jobs.append(job)
+
+        if progress_callback:
+            jobs_with_assets = sum(1 for j in enriched_jobs if j.get('assets'))
+            progress_callback(f"✓ Enriched {total} jobs ({jobs_with_assets} have assets)")
+
+        return enriched_jobs
+
     def sync_to_database(self, jobs: List[Dict], progress_callback=None) -> Dict:
         """Sync jobs to database and return stats"""
         if progress_callback:
