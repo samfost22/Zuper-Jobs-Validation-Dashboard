@@ -61,6 +61,19 @@ def extract_serial_from_text(text):
 
     return [m.upper() for m in matches]
 
+def extract_asset_code_from_title(job_title):
+    """Extract asset code from job title (e.g., 'S38:Description' -> 'S38')"""
+    if not job_title:
+        return ''
+
+    # Pattern: S followed by digits at the start, ending with colon
+    # Examples: "S38:", "S8:", "S123:"
+    match = re.match(r'^(S\d+):', str(job_title))
+    if match:
+        return match.group(1)
+
+    return ''
+
 def extract_netsuite_id(job):
     """Extract NetSuite Sales Order ID from custom fields"""
     custom_fields = job.get('custom_fields', [])
@@ -323,7 +336,7 @@ def sync_jobs_to_database(jobs):
                 organization_uid,
                 organization_name,
                 get_service_team(job),
-                job.get('asset', {}).get('asset_name', '') if isinstance(job.get('asset'), dict) else str(job.get('asset', '')),
+                extract_asset_code_from_title(job.get('job_title', '')),
                 job.get('created_at', ''),
                 job.get('updated_at', ''),
                 get_completion_date(job),
