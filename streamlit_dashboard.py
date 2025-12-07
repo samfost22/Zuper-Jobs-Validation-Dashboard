@@ -40,6 +40,8 @@ if 'job_number_search' not in st.session_state:
     st.session_state.job_number_search = ''
 if 'part_search' not in st.session_state:
     st.session_state.part_search = ''
+if 'asset_filter' not in st.session_state:
+    st.session_state.asset_filter = ''
 
 
 def ensure_database_exists():
@@ -115,7 +117,7 @@ def get_metrics():
 
 
 @st.cache_data(ttl=60)  # Cache for 60 seconds
-def get_jobs(filter_type='all', page=1, month='', organization='', team='', start_date=None, end_date=None, job_number='', part_search='', limit=50):
+def get_jobs(filter_type='all', page=1, month='', organization='', team='', start_date=None, end_date=None, job_number='', part_search='', asset='', limit=50):
     """Get jobs list with filtering and pagination"""
     try:
         conn = get_db_connection()
@@ -145,6 +147,9 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
 
         if team:
             filter_clauses.append(f"j.service_team LIKE '%{team}%'")
+
+        if asset:
+            filter_clauses.append(f"j.asset_name = '{asset}'")
 
         date_clause = ("AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
 
@@ -261,6 +266,41 @@ def get_filter_options():
     except:
         # Return empty lists if database has issues
         return [], []
+
+
+@st.cache_data(ttl=60)  # Cache for 60 seconds
+def get_assets_with_counts():
+    """Get list of assets with job counts, sorted by most jobs first"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                j.asset_name,
+                COUNT(DISTINCT j.job_uid) as total_jobs,
+                COUNT(DISTINCT CASE WHEN vf.id IS NOT NULL AND vf.is_resolved = 0 THEN j.job_uid END) as jobs_with_issues
+            FROM jobs j
+            LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
+            WHERE j.asset_name IS NOT NULL AND j.asset_name != ''
+            GROUP BY j.asset_name
+            ORDER BY total_jobs DESC
+        """)
+
+        assets = []
+        for row in cursor.fetchall():
+            asset_label = f"{row['asset_name']} ({row['total_jobs']} jobs"
+            if row['jobs_with_issues'] > 0:
+                asset_label += f", {row['jobs_with_issues']} with issues"
+            asset_label += ")"
+            assets.append((row['asset_name'], asset_label))
+
+        conn.close()
+
+        return assets
+    except:
+        # Return empty list if database has issues
+        return []
 
 
 def mark_job_good(job_uid):
@@ -393,8 +433,8 @@ with col3:
     else:
         st.session_state.end_date = None
 
-# Second row: Month, Organization, Service Team
-col1, col2, col3 = st.columns(3)
+# Second row: Month, Organization, Service Team, Asset
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     # Only show month filter if date range is not set
@@ -422,6 +462,21 @@ with col3:
     else:
         st.session_state.team_filter = ''
 
+with col4:
+    # Get assets with job counts
+    assets_with_counts = get_assets_with_counts()
+    asset_options = ["All Assets"] + [label for _, label in assets_with_counts]
+    asset_values = [""] + [name for name, _ in assets_with_counts]
+
+    asset_filter = st.selectbox("Asset (by job count)", asset_options, key="asset_select")
+    if asset_filter != "All Assets":
+        # Find the actual asset name from the label
+        selected_index = asset_options.index(asset_filter)
+        st.session_state.asset_filter = asset_values[selected_index]
+        st.session_state.current_page = 1  # Reset to page 1
+    else:
+        st.session_state.asset_filter = ''
+
 # Jobs table
 jobs, total_count = get_jobs(
     st.session_state.current_filter,
@@ -432,7 +487,8 @@ jobs, total_count = get_jobs(
     st.session_state.start_date,
     st.session_state.end_date,
     st.session_state.job_number_search,
-    st.session_state.part_search
+    st.session_state.part_search,
+    st.session_state.asset_filter
 )
 
 st.subheader(f"Jobs ({total_count} total)")
