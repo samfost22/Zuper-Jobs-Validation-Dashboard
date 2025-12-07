@@ -44,8 +44,17 @@ class ZuperSync:
                 'count': page_size  # Changed from 'limit' to 'count' to match working script
             }
 
-            response = requests.get(url, headers=self.headers, params=params)
-            response.raise_for_status()
+            try:
+                response = requests.get(url, headers=self.headers, params=params, timeout=30)
+                response.raise_for_status()
+            except requests.exceptions.Timeout:
+                if progress_callback:
+                    progress_callback(f"⚠️ Request timeout on page {page}. Retrying...")
+                continue  # Retry the same page
+            except requests.exceptions.RequestException as e:
+                if progress_callback:
+                    progress_callback(f"❌ API error on page {page}: {str(e)}")
+                break  # Stop fetching on error
 
             data = response.json()
 
@@ -153,6 +162,9 @@ def test_api_connection(api_key: str, base_url: str) -> bool:
         url = f"{base_url.rstrip('/')}/api/jobs?limit=1"
         response = requests.get(url, headers=headers, timeout=10)
         return response.status_code == 200
+    except requests.exceptions.Timeout:
+        print(f"API test failed: Connection timeout after 10 seconds")
+        return False
     except Exception as e:
         print(f"API test failed: {e}")
         return False

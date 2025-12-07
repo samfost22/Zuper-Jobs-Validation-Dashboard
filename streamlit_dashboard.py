@@ -51,9 +51,9 @@ def ensure_database_exists():
 
 
 def get_db_connection():
-    """Get database connection"""
+    """Get database connection with timeout"""
     ensure_database_exists()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, timeout=30.0)  # 30 second timeout
     conn.row_factory = sqlite3.Row
     return conn
 
