@@ -341,25 +341,29 @@ with st.sidebar:
     
     if has_credentials:
         if st.button("🔄 Refresh Data from API", type="primary"):
-            with st.spinner("Syncing data..."):
-                progress_text = st.empty()
-                
-                def progress_callback(msg):
-                    progress_text.text(msg)
-                
-                try:
-                    syncer = ZuperSync(api_key, base_url)
-                    jobs = syncer.fetch_jobs_from_api(progress_callback)
+            progress_text = st.empty()
+            status_text = st.empty()
 
-                    # Enrich jobs with asset data from job details API
-                    jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
+            def progress_callback(msg):
+                progress_text.info(msg)
 
-                    stats = syncer.sync_to_database(jobs, progress_callback)
+            try:
+                status_text.info("🔄 Starting sync...")
+                syncer = ZuperSync(api_key, base_url)
 
-                    st.success(f"✅ Synced {stats['total_jobs']} jobs!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"❌ Sync failed: {e}")
+                jobs = syncer.fetch_jobs_from_api(progress_callback)
+
+                # Enrich jobs with asset data from job details API
+                jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
+
+                stats = syncer.sync_to_database(jobs, progress_callback)
+
+                progress_text.empty()
+                status_text.success(f"✅ Synced {stats['total_jobs']} jobs!")
+                st.rerun()
+            except Exception as e:
+                progress_text.empty()
+                status_text.error(f"❌ Sync failed: {e}")
     
     st.divider()
     
