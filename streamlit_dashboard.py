@@ -600,6 +600,188 @@ with col4:
     else:
         st.session_state.asset_filter = ''
 
+# Bulk Serial Number Lookup
+with st.expander("📋 Bulk Serial Number Lookup"):
+    st.caption("Search for multiple serial numbers at once - paste a list or upload a CSV")
+
+    tab1, tab2 = st.tabs(["📝 Paste List", "📁 Upload CSV"])
+
+    with tab1:
+        bulk_serials_text = st.text_area(
+            "Paste serial numbers (one per line)",
+            placeholder="CR-SM-12345\nCR-SM-12346\nCR-SM-12347\n...",
+            height=150,
+            key="bulk_serials_input"
+        )
+
+        if st.button("🔍 Search Serial Numbers", type="primary"):
+            if bulk_serials_text:
+                # Parse serial numbers from text
+                serials = [s.strip() for s in bulk_serials_text.split('\n') if s.strip()]
+
+                # Search for each serial
+                conn = get_db_connection()
+                cursor = conn.cursor()
+
+                results = []
+                for serial in serials:
+                    # Search in both line items and checklist parts
+                    cursor.execute("""
+                        SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
+                               j.created_at, j.asset_name, j.service_team,
+                               li.item_serial as line_item_serial,
+                               cp.part_serial as checklist_serial
+                        FROM jobs j
+                        LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
+                            AND (li.item_serial LIKE ? OR li.item_serial LIKE ?)
+                        LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
+                            AND (cp.part_serial LIKE ? OR cp.part_serial LIKE ?)
+                        WHERE li.item_serial IS NOT NULL OR cp.part_serial IS NOT NULL
+                        ORDER BY j.created_at DESC
+                    """, (f'%{serial}%', f'%{serial}%', f'%{serial}%', f'%{serial}%'))
+
+                    rows = cursor.fetchall()
+                    for row in rows:
+                        results.append({
+                            'searched_serial': serial,
+                            'job_number': row['job_number'],
+                            'job_title': row['job_title'],
+                            'customer': row['customer_name'],
+                            'asset': row['asset_name'] or 'N/A',
+                            'service_team': row['service_team'] or 'N/A',
+                            'created_at': row['created_at'],
+                            'job_uid': row['job_uid']
+                        })
+
+                conn.close()
+
+                if results:
+                    st.success(f"✅ Found {len(results)} job(s) across {len(serials)} serial numbers")
+
+                    # Display results in a dataframe
+                    df = pd.DataFrame(results)
+                    df['Zuper Link'] = df['job_uid'].apply(lambda x: f"https://web.zuperpro.com/jobs/{x}/details")
+
+                    # Reorder columns
+                    display_df = df[['searched_serial', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
+                    display_df.columns = ['Serial Searched', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
+
+                    st.dataframe(display_df, use_container_width=True)
+
+                    # Download button
+                    csv = display_df.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download Results as CSV",
+                        data=csv,
+                        file_name="serial_lookup_results.csv",
+                        mime="text/csv"
+                    )
+
+                    # Show which serials weren't found
+                    found_serials = set(df['searched_serial'].unique())
+                    not_found = [s for s in serials if s not in found_serials]
+                    if not_found:
+                        st.warning(f"⚠️ {len(not_found)} serial(s) not found: {', '.join(not_found)}")
+                else:
+                    st.error("❌ No jobs found for the provided serial numbers")
+            else:
+                st.warning("⚠️ Please enter serial numbers to search")
+
+    with tab2:
+        uploaded_file = st.file_uploader("Upload CSV with serial numbers", type=['csv'])
+
+        if uploaded_file is not None:
+            try:
+                # Read CSV
+                import io
+                csv_data = pd.read_csv(uploaded_file)
+
+                # Try to find serial column
+                serial_column = None
+                for col in csv_data.columns:
+                    if 'serial' in col.lower():
+                        serial_column = col
+                        break
+
+                if serial_column:
+                    serials = csv_data[serial_column].dropna().astype(str).tolist()
+                    st.info(f"📊 Found {len(serials)} serial numbers in column '{serial_column}'")
+
+                    if st.button("🔍 Search from CSV", type="primary"):
+                        # Same search logic as tab1
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+
+                        results = []
+                        for serial in serials:
+                            serial = serial.strip()
+                            if not serial:
+                                continue
+
+                            cursor.execute("""
+                                SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
+                                       j.created_at, j.asset_name, j.service_team,
+                                       li.item_serial as line_item_serial,
+                                       cp.part_serial as checklist_serial
+                                FROM jobs j
+                                LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
+                                    AND (li.item_serial LIKE ? OR li.item_serial LIKE ?)
+                                LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
+                                    AND (cp.part_serial LIKE ? OR cp.part_serial LIKE ?)
+                                WHERE li.item_serial IS NOT NULL OR cp.part_serial IS NOT NULL
+                                ORDER BY j.created_at DESC
+                            """, (f'%{serial}%', f'%{serial}%', f'%{serial}%', f'%{serial}%'))
+
+                            rows = cursor.fetchall()
+                            for row in rows:
+                                results.append({
+                                    'searched_serial': serial,
+                                    'job_number': row['job_number'],
+                                    'job_title': row['job_title'],
+                                    'customer': row['customer_name'],
+                                    'asset': row['asset_name'] or 'N/A',
+                                    'service_team': row['service_team'] or 'N/A',
+                                    'created_at': row['created_at'],
+                                    'job_uid': row['job_uid']
+                                })
+
+                        conn.close()
+
+                        if results:
+                            st.success(f"✅ Found {len(results)} job(s) across {len(serials)} serial numbers")
+
+                            df = pd.DataFrame(results)
+                            df['Zuper Link'] = df['job_uid'].apply(lambda x: f"https://web.zuperpro.com/jobs/{x}/details")
+
+                            display_df = df[['searched_serial', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
+                            display_df.columns = ['Serial Searched', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
+
+                            st.dataframe(display_df, use_container_width=True)
+
+                            csv = display_df.to_csv(index=False)
+                            st.download_button(
+                                label="📥 Download Results as CSV",
+                                data=csv,
+                                file_name="serial_lookup_results.csv",
+                                mime="text/csv"
+                            )
+
+                            found_serials = set(df['searched_serial'].unique())
+                            not_found = [s for s in serials if s not in found_serials]
+                            if not_found:
+                                with st.expander(f"⚠️ {len(not_found)} serial(s) not found"):
+                                    st.write(', '.join(not_found))
+                        else:
+                            st.error("❌ No jobs found for the provided serial numbers")
+                else:
+                    st.warning("⚠️ Could not find a column with 'serial' in the name. Please make sure your CSV has a column containing serial numbers.")
+                    st.caption(f"Available columns: {', '.join(csv_data.columns)}")
+
+            except Exception as e:
+                st.error(f"❌ Error reading CSV: {e}")
+
+st.divider()
+
 # Jobs table
 jobs, total_count = get_jobs(
     st.session_state.current_filter,
