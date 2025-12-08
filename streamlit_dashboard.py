@@ -9,12 +9,32 @@ import pandas as pd
 import json
 from datetime import datetime
 from pathlib import Path
-from streamlit_sync import ZuperSync, test_api_connection
 
-# Use persistent data directory
-DATA_DIR = Path(__file__).parent / 'data'
-DATA_DIR.mkdir(exist_ok=True)
-DB_FILE = str(DATA_DIR / 'jobs_validation.db')
+# Lazy import to avoid hanging at startup
+_zuper_sync_module = None
+
+def _get_zuper_sync():
+    """Lazy load the streamlit_sync module to prevent startup hangs."""
+    global _zuper_sync_module
+    if _zuper_sync_module is None:
+        from streamlit_sync import ZuperSync, test_api_connection, init_database
+        _zuper_sync_module = {
+            'ZuperSync': ZuperSync,
+            'test_api_connection': test_api_connection,
+            'init_database': init_database
+        }
+    return _zuper_sync_module
+
+# Use persistent data directory - wrapped in try/except for safety
+try:
+    DATA_DIR = Path(__file__).parent / 'data'
+    DATA_DIR.mkdir(exist_ok=True)
+    DB_FILE = str(DATA_DIR / 'jobs_validation.db')
+except Exception as e:
+    # Fallback to current directory if there's an issue
+    DATA_DIR = Path('data')
+    DATA_DIR.mkdir(exist_ok=True)
+    DB_FILE = str(DATA_DIR / 'jobs_validation.db')
 
 # Page config
 st.set_page_config(
@@ -53,14 +73,14 @@ def ensure_database_exists():
     """Initialize database if it doesn't exist"""
     import os
     if not os.path.exists(DB_FILE):
-        from streamlit_sync import init_database
-        init_database()
+        sync_module = _get_zuper_sync()
+        sync_module['init_database']()
 
 
 def get_db_connection():
     """Get database connection with timeout"""
     ensure_database_exists()
-    conn = sqlite3.connect(DB_FILE, timeout=30.0)  # 30 second timeout
+    conn = sqlite3.connect(DB_FILE, timeout=10.0)  # 10 second timeout (reduced from 30)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -378,6 +398,8 @@ with st.sidebar:
                 progress_text.info(msg)
 
             try:
+                sync_module = _get_zuper_sync()
+                ZuperSync = sync_module['ZuperSync']
                 syncer = ZuperSync(api_key, base_url)
 
                 # Check if database has data
@@ -438,6 +460,8 @@ with st.sidebar:
 
                     try:
                         status_text.info("⚡ Starting quick sync...")
+                        sync_module = _get_zuper_sync()
+                        ZuperSync = sync_module['ZuperSync']
                         syncer = ZuperSync(api_key, base_url)
                         jobs = syncer.fetch_updated_jobs_only(progress_callback)
 
@@ -464,6 +488,8 @@ with st.sidebar:
 
                     try:
                         status_text.info("🔄 Starting full sync in batches...")
+                        sync_module = _get_zuper_sync()
+                        ZuperSync = sync_module['ZuperSync']
                         syncer = ZuperSync(api_key, base_url)
                         jobs = syncer.fetch_jobs_from_api(progress_callback)
                         # Use batch sync with enrichment
@@ -491,8 +517,18 @@ with st.sidebar:
     except:
         pass
 
-# Metrics
-metrics = get_metrics()
+# Metrics - wrapped in try/except to prevent hangs
+try:
+    metrics = get_metrics()
+except Exception as e:
+    # Clear cache and try again if there's an error
+    st.cache_data.clear()
+    metrics = {
+        'total_jobs': 0,
+        'parts_no_items_count': 0,
+        'missing_netsuite_count': 0,
+        'passing_count': 0
+    }
 
 col1, col2, col3, col4 = st.columns(4)
 
@@ -516,8 +552,12 @@ with col4:
         st.session_state.current_filter = 'passing'
         st.session_state.current_page = 1
 
-# Filters
-organizations, teams = get_filter_options()
+# Filters - wrapped in try/except to prevent hangs
+try:
+    organizations, teams = get_filter_options()
+except Exception as e:
+    st.cache_data.clear()
+    organizations, teams = [], []
 
 # First row: Job number search, Part search, Serial search, and date range
 col1, col2, col3, col4, col5 = st.columns(5)
@@ -590,8 +630,12 @@ with col3:
         st.session_state.team_filter = ''
 
 with col4:
-    # Get assets with job counts
-    assets_with_counts = get_assets_with_counts()
+    # Get assets with job counts - wrapped in try/except
+    try:
+        assets_with_counts = get_assets_with_counts()
+    except Exception as e:
+        st.cache_data.clear()
+        assets_with_counts = []
     asset_options = ["All Assets"] + [label for _, label in assets_with_counts]
     asset_values = [""] + [name for name, _ in assets_with_counts]
 
@@ -786,20 +830,24 @@ with st.expander("📋 Bulk Serial Number Lookup"):
 
 st.divider()
 
-# Jobs table
-jobs, total_count = get_jobs(
-    st.session_state.current_filter,
-    st.session_state.current_page,
-    st.session_state.month_filter,
-    st.session_state.org_filter,
-    st.session_state.team_filter,
-    st.session_state.start_date,
-    st.session_state.end_date,
-    st.session_state.job_number_search,
-    st.session_state.part_search,
-    st.session_state.serial_search,
-    st.session_state.asset_filter
-)
+# Jobs table - wrapped in try/except to prevent hangs
+try:
+    jobs, total_count = get_jobs(
+        st.session_state.current_filter,
+        st.session_state.current_page,
+        st.session_state.month_filter,
+        st.session_state.org_filter,
+        st.session_state.team_filter,
+        st.session_state.start_date,
+        st.session_state.end_date,
+        st.session_state.job_number_search,
+        st.session_state.part_search,
+        st.session_state.serial_search,
+        st.session_state.asset_filter
+    )
+except Exception as e:
+    st.cache_data.clear()
+    jobs, total_count = [], 0
 
 # Show filter status with total database count
 active_filters = []
