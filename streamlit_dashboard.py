@@ -4,87 +4,57 @@ Zuper Jobs Validation Dashboard - Streamlit Version
 """
 
 import streamlit as st
-
-# Debug: Show any startup errors
-try:
-    import sqlite3
-    import pandas as pd
-    import json
-    from datetime import datetime
-    from pathlib import Path
-except Exception as e:
-    st.error(f"Import error: {e}")
-    st.stop()
-
-try:
-    from streamlit_sync import ZuperSync, test_api_connection
-except Exception as e:
-    st.error(f"Error importing streamlit_sync: {e}")
-    st.stop()
+import sqlite3
+import pandas as pd
+import json
+from datetime import datetime
+from pathlib import Path
+from streamlit_sync import ZuperSync, test_api_connection
 
 # Use persistent data directory
-try:
-    DATA_DIR = Path(__file__).parent / 'data'
-    DATA_DIR.mkdir(exist_ok=True)
-    DB_FILE = str(DATA_DIR / 'jobs_validation.db')
-except Exception as e:
-    st.error(f"Error setting up data directory: {e}")
-    st.stop()
+DATA_DIR = Path(__file__).parent / 'data'
+DATA_DIR.mkdir(exist_ok=True)
+DB_FILE = str(DATA_DIR / 'jobs_validation.db')
 
 # Page config
-try:
-    st.set_page_config(
-        page_title="Zuper Jobs Validation Dashboard",
-        page_icon="📊",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-except Exception as e:
-    # Page config might already be set
-    pass
-
-# Debug checkpoint
-st.write("DEBUG: App starting...")
+st.set_page_config(
+    page_title="Zuper Jobs Validation Dashboard",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # Initialize session state
-try:
-    if 'current_filter' not in st.session_state:
-        st.session_state.current_filter = 'all'
-    if 'current_page' not in st.session_state:
-        st.session_state.current_page = 1
-    if 'month_filter' not in st.session_state:
-        st.session_state.month_filter = ''
-    if 'org_filter' not in st.session_state:
-        st.session_state.org_filter = ''
-    if 'team_filter' not in st.session_state:
-        st.session_state.team_filter = ''
-    if 'start_date' not in st.session_state:
-        st.session_state.start_date = None
-    if 'end_date' not in st.session_state:
-        st.session_state.end_date = None
-    if 'job_number_search' not in st.session_state:
-        st.session_state.job_number_search = ''
-    if 'part_search' not in st.session_state:
-        st.session_state.part_search = ''
-    if 'serial_search' not in st.session_state:
-        st.session_state.serial_search = ''
-    if 'asset_filter' not in st.session_state:
-        st.session_state.asset_filter = ''
-    st.write("DEBUG: Session state initialized")
-except Exception as e:
-    st.error(f"Session state error: {e}")
-    st.stop()
+if 'current_filter' not in st.session_state:
+    st.session_state.current_filter = 'all'
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = 1
+if 'month_filter' not in st.session_state:
+    st.session_state.month_filter = ''
+if 'org_filter' not in st.session_state:
+    st.session_state.org_filter = ''
+if 'team_filter' not in st.session_state:
+    st.session_state.team_filter = ''
+if 'start_date' not in st.session_state:
+    st.session_state.start_date = None
+if 'end_date' not in st.session_state:
+    st.session_state.end_date = None
+if 'job_number_search' not in st.session_state:
+    st.session_state.job_number_search = ''
+if 'part_search' not in st.session_state:
+    st.session_state.part_search = ''
+if 'serial_search' not in st.session_state:
+    st.session_state.serial_search = ''
+if 'asset_filter' not in st.session_state:
+    st.session_state.asset_filter = ''
 
 
 def ensure_database_exists():
     """Initialize database if it doesn't exist"""
     import os
     if not os.path.exists(DB_FILE):
-        st.write(f"DEBUG: Database not found at {DB_FILE}, initializing...")
         from streamlit_sync import init_database
         init_database()
-    else:
-        st.write(f"DEBUG: Database exists at {DB_FILE}")
 
 
 def get_db_connection():
