@@ -408,11 +408,6 @@ class ZuperSync:
             try:
                 conn = sqlite3.connect(DB_FILE)
                 cursor = conn.cursor()
-            except sqlite3.Error as e:
-                error_msg = f"❌ Database connection error: {str(e)}"
-                if progress_callback:
-                    progress_callback(error_msg)
-                raise Exception(error_msg)
 
                 cursor.execute("SELECT COUNT(*) FROM jobs")
                 total_jobs = cursor.fetchone()[0]
@@ -439,11 +434,9 @@ class ZuperSync:
                 }
 
             except sqlite3.Error as e:
-                error_msg = f"❌ Database query error: {str(e)}"
+                error_msg = f"❌ Database error: {str(e)}"
                 if progress_callback:
                     progress_callback(error_msg)
-                if conn:
-                    conn.close()
                 raise Exception(error_msg)
 
         except Exception as e:
