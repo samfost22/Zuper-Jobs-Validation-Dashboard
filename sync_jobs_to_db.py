@@ -11,10 +11,15 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-# Use persistent data directory
-DATA_DIR = Path(__file__).parent / 'data'
-DATA_DIR.mkdir(exist_ok=True)
-DB_FILE = str(DATA_DIR / 'jobs_validation.db')
+from config import (
+    JOBS_DB_FILE as DB_FILE,
+    ROOT_DIR,
+    ALLOWED_JOB_CATEGORIES,
+    SKIP_VALIDATION_CATEGORIES,
+    CONSUMABLE_TERMS,
+    SERIAL_PATTERN,
+)
+
 JOBS_DATA_FILE = 'jobs_data.json'
 
 def init_database():
@@ -59,10 +64,7 @@ def extract_serial_from_text(text):
     if not text:
         return []
 
-    # Pattern: CR-SM-XXXXX or CR-SM-XXXXX-RW
-    pattern = r'CR-SM-\d{5,6}(?:-RW)?'
-    matches = re.findall(pattern, str(text), re.IGNORECASE)
-
+    matches = re.findall(SERIAL_PATTERN, str(text), re.IGNORECASE)
     return [m.upper() for m in matches]
 
 def extract_asset_from_job(job):
@@ -252,11 +254,7 @@ def sync_jobs_to_database(jobs):
     cursor = conn.cursor()
 
     # Define allowed job categories (ALLOWLIST approach)
-    allowed_categories = [
-        'LaserWeeder Service Call',
-        'WM Service - In Field',
-        'WM Repair - In Shop'
-    ]
+    allowed_categories = ALLOWED_JOB_CATEGORIES
     print(f"Filtering for allowed job categories: {', '.join(allowed_categories)}")
 
     # Clean up jobs not in allowed categories from previous syncs
@@ -499,13 +497,7 @@ def validate_job(job_uid, line_items, checklist_parts, netsuite_id, job_category
     flags = []
 
     # Skip validation for certain job categories that don't need NetSuite tracking
-    skip_categories = [
-        'field requires parts',  # Parts requests
-        'reaper pm',             # Preventive maintenance
-        'slayer pm',             # Preventive maintenance
-    ]
-
-    if any(category in job_category.lower() for category in skip_categories):
+    if any(category in job_category.lower() for category in SKIP_VALIDATION_CATEGORIES):
         return flags
 
     # Rule 1: If job has line items but no NetSuite ID
@@ -520,8 +512,10 @@ def validate_job(job_uid, line_items, checklist_parts, netsuite_id, job_category
             item_type = (item.get('line_item_type') or '').lower()
 
             # Check if this is a consumable or service (these don't need NetSuite tracking)
-            is_consumable = any(term in item_name or term in item_code or term in item_serial or term in item_type
-                              for term in ['consumable', 'consumables', 'supplies', 'service'])
+            is_consumable = any(
+                term in item_name or term in item_code or term in item_serial or term in item_type
+                for term in CONSUMABLE_TERMS
+            )
 
             if not is_consumable:
                 non_consumable_items.append(item)
