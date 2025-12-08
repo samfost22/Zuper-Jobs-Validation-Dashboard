@@ -299,6 +299,89 @@ class ZuperSync:
 
         return enriched_jobs
 
+    def sync_jobs_in_batches(self, jobs: List[Dict], batch_size: int = 150, progress_callback=None) -> Dict:
+        """
+        Sync jobs to database in batches with asset enrichment
+        This avoids timeout by processing smaller chunks at a time
+        """
+        if progress_callback:
+            progress_callback("🔧 Initializing database...")
+
+        init_database()
+
+        total_jobs = len(jobs)
+        total_synced = 0
+
+        if progress_callback:
+            progress_callback(f"📦 Processing {total_jobs} jobs in batches of {batch_size}...")
+
+        # Process jobs in batches
+        for batch_start in range(0, total_jobs, batch_size):
+            batch_end = min(batch_start + batch_size, total_jobs)
+            batch = jobs[batch_start:batch_end]
+            batch_num = (batch_start // batch_size) + 1
+            total_batches = (total_jobs + batch_size - 1) // batch_size
+
+            if progress_callback:
+                progress_callback(f"🔄 Batch {batch_num}/{total_batches}: Enriching {len(batch)} jobs with assets...")
+
+            # Enrich this batch with assets
+            enriched_batch = self.enrich_jobs_with_assets(batch, progress_callback)
+
+            if progress_callback:
+                progress_callback(f"💾 Batch {batch_num}/{total_batches}: Saving to database...")
+
+            # Sync this batch to database
+            from sync_jobs_to_db import sync_jobs_to_database
+            try:
+                sync_jobs_to_database(enriched_batch)
+                total_synced += len(enriched_batch)
+
+                if progress_callback:
+                    progress_callback(f"✅ Batch {batch_num}/{total_batches} complete ({total_synced}/{total_jobs} total)")
+
+            except Exception as e:
+                error_msg = f"❌ Error syncing batch {batch_num}: {str(e)}"
+                if progress_callback:
+                    progress_callback(error_msg)
+                # Continue with next batch instead of failing completely
+                continue
+
+        # Get final stats
+        try:
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT COUNT(*) FROM jobs")
+            total_jobs_in_db = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM jobs WHERE has_line_items = 1")
+            jobs_with_items = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM jobs WHERE has_netsuite_id = 1")
+            jobs_with_netsuite = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(DISTINCT job_uid) FROM validation_flags WHERE is_resolved = 0")
+            jobs_with_flags = cursor.fetchone()[0]
+
+            conn.close()
+
+            if progress_callback:
+                progress_callback(f"✅ Sync complete! Processed {total_synced} jobs")
+
+            return {
+                'total_jobs': total_jobs_in_db,
+                'jobs_with_items': jobs_with_items,
+                'jobs_with_netsuite': jobs_with_netsuite,
+                'jobs_with_flags': jobs_with_flags
+            }
+
+        except sqlite3.Error as e:
+            error_msg = f"❌ Error getting final stats: {str(e)}"
+            if progress_callback:
+                progress_callback(error_msg)
+            raise Exception(error_msg)
+
     def sync_to_database(self, jobs: List[Dict], progress_callback=None) -> Dict:
         """Sync jobs to database with robust error handling"""
         try:
@@ -325,11 +408,6 @@ class ZuperSync:
             try:
                 conn = sqlite3.connect(DB_FILE)
                 cursor = conn.cursor()
-            except sqlite3.Error as e:
-                error_msg = f"❌ Database connection error: {str(e)}"
-                if progress_callback:
-                    progress_callback(error_msg)
-                raise Exception(error_msg)
 
                 cursor.execute("SELECT COUNT(*) FROM jobs")
                 total_jobs = cursor.fetchone()[0]
@@ -356,11 +434,9 @@ class ZuperSync:
                 }
 
             except sqlite3.Error as e:
-                error_msg = f"❌ Database query error: {str(e)}"
+                error_msg = f"❌ Database error: {str(e)}"
                 if progress_callback:
                     progress_callback(error_msg)
-                if conn:
-                    conn.close()
                 raise Exception(error_msg)
 
         except Exception as e:
