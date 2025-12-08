@@ -10,6 +10,8 @@ import sqlite3
 import re
 import requests
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
@@ -22,13 +24,27 @@ DB_FILE = str(DATA_DIR / 'jobs_validation.db')
 class ZuperSync:
     """Handles syncing Zuper jobs to database with progress callbacks"""
     
-    def __init__(self, api_key: str, base_url: str):
+    def __init__(self, api_key: str, base_url: str, max_workers: int = 20):
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
         self.headers = {
             'x-api-key': api_key,
             'Content-Type': 'application/json'
         }
+        self.max_workers = max_workers
+
+        # Create a session for connection pooling (reuses TCP connections)
+        self.session = requests.Session()
+        self.session.headers.update(self.headers)
+
+        # Configure connection pool size to match max workers
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=max_workers,
+            pool_maxsize=max_workers,
+            max_retries=0  # We handle retries manually
+        )
+        self.session.mount('https://', adapter)
+        self.session.mount('http://', adapter)
     
     def fetch_jobs_from_api(self, progress_callback=None) -> List[Dict]:
         """Fetch all jobs from Zuper API with robust error handling"""
@@ -52,7 +68,7 @@ class ZuperSync:
             }
 
             try:
-                response = requests.get(url, headers=self.headers, params=params, timeout=30)
+                response = self.session.get(url, params=params, timeout=30)
                 response.raise_for_status()
                 retry_count = 0  # Reset retry count on success
 
@@ -172,7 +188,7 @@ class ZuperSync:
 
         for attempt in range(max_retries):
             try:
-                response = requests.get(url, headers=self.headers, timeout=30)
+                response = self.session.get(url, timeout=30)
 
                 # Handle rate limiting
                 if response.status_code == 429:
@@ -210,75 +226,118 @@ class ZuperSync:
 
     def enrich_jobs_with_assets(self, jobs: List[Dict], progress_callback=None) -> List[Dict]:
         """
-        Enrich job list with asset data from individual job details
+        Enrich job list with asset data from individual job details using parallel requests.
 
-        Includes robust error handling, retry logic, and detailed progress tracking
+        Uses ThreadPoolExecutor for concurrent API calls, dramatically improving performance.
+        Includes robust error handling, retry logic, and detailed progress tracking.
         """
         if progress_callback:
-            progress_callback(f"🔍 Enriching {len(jobs)} jobs with asset data...")
+            progress_callback(f"🚀 Enriching {len(jobs)} jobs with asset data ({self.max_workers} parallel workers)...")
 
-        enriched_jobs = []
         total = len(jobs)
+        if total == 0:
+            return jobs
 
-        # Error tracking
+        # Thread-safe counters for progress tracking
+        completed_count = 0
         error_count = 0
         timeout_count = 0
         rate_limit_count = 0
+        counter_lock = threading.Lock()
         errors_by_type = {}
 
         start_time = time.time()
 
-        for idx, job in enumerate(jobs):
-            job_uid = job.get('job_uid')
+        # Create a mapping of job_uid to job for easy lookup
+        job_map = {job.get('job_uid'): job for job in jobs}
 
-            # Progress update every 100 jobs with stats
-            if progress_callback and (idx + 1) % 100 == 0:
-                elapsed = time.time() - start_time
-                rate = (idx + 1) / elapsed if elapsed > 0 else 0
-                remaining = (total - idx - 1) / rate if rate > 0 else 0
-                eta_mins = int(remaining / 60)
-
-                progress_msg = (
-                    f"Enriching: {idx + 1}/{total} ({int((idx + 1)/total * 100)}%) | "
-                    f"Rate: {rate:.1f} jobs/sec | ETA: {eta_mins} min"
-                )
-                if error_count > 0:
-                    progress_msg += f" | Errors: {error_count}"
-
-                progress_callback(progress_msg)
-
-            # Fetch job details with error handling
+        def fetch_and_enrich(job_uid: str) -> Tuple[str, Optional[List], Optional[str]]:
+            """Fetch job details and return (job_uid, assets, error)"""
             job_details, error = self.fetch_job_details(job_uid)
 
             if error:
-                error_count += 1
-                # Track error types
-                error_type = error.split(':')[0] if ':' in error else error
-                errors_by_type[error_type] = errors_by_type.get(error_type, 0) + 1
-
-                if 'Timeout' in error:
-                    timeout_count += 1
-                elif '429' in error or 'rate limit' in error.lower():
-                    rate_limit_count += 1
-
-                # Add empty assets on error
-                job['assets'] = []
+                return job_uid, None, error
             elif job_details and 'assets' in job_details:
-                # Successfully got assets
-                job['assets'] = job_details.get('assets', [])
+                return job_uid, job_details.get('assets', []), None
             else:
-                # No error but no assets either
-                job['assets'] = []
+                return job_uid, [], None
 
-            enriched_jobs.append(job)
+        # Submit all jobs to the thread pool
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all fetch tasks
+            future_to_uid = {
+                executor.submit(fetch_and_enrich, job.get('job_uid')): job.get('job_uid')
+                for job in jobs
+            }
+
+            # Process results as they complete
+            for future in as_completed(future_to_uid):
+                job_uid = future_to_uid[future]
+
+                try:
+                    uid, assets, error = future.result()
+
+                    with counter_lock:
+                        completed_count += 1
+
+                        if error:
+                            error_count += 1
+                            error_type = error.split(':')[0] if ':' in error else error
+                            errors_by_type[error_type] = errors_by_type.get(error_type, 0) + 1
+
+                            if 'Timeout' in error:
+                                timeout_count += 1
+                            elif '429' in error or 'rate limit' in error.lower():
+                                rate_limit_count += 1
+
+                            # Add empty assets on error
+                            if uid in job_map:
+                                job_map[uid]['assets'] = []
+                        else:
+                            # Successfully got assets
+                            if uid in job_map:
+                                job_map[uid]['assets'] = assets if assets else []
+
+                        # Progress update every 100 jobs
+                        if progress_callback and completed_count % 100 == 0:
+                            elapsed = time.time() - start_time
+                            rate = completed_count / elapsed if elapsed > 0 else 0
+                            remaining = (total - completed_count) / rate if rate > 0 else 0
+                            eta_secs = int(remaining)
+
+                            if eta_secs >= 60:
+                                eta_str = f"{eta_secs // 60}m {eta_secs % 60}s"
+                            else:
+                                eta_str = f"{eta_secs}s"
+
+                            progress_msg = (
+                                f"Enriching: {completed_count}/{total} ({int(completed_count/total * 100)}%) | "
+                                f"Rate: {rate:.1f} jobs/sec | ETA: {eta_str}"
+                            )
+                            if error_count > 0:
+                                progress_msg += f" | Errors: {error_count}"
+
+                            progress_callback(progress_msg)
+
+                except Exception as e:
+                    with counter_lock:
+                        completed_count += 1
+                        error_count += 1
+                        if job_uid in job_map:
+                            job_map[job_uid]['assets'] = []
 
         # Final summary
         if progress_callback:
-            jobs_with_assets = sum(1 for j in enriched_jobs if j.get('assets'))
-            elapsed_mins = int((time.time() - start_time) / 60)
+            jobs_with_assets = sum(1 for j in jobs if j.get('assets'))
+            elapsed = time.time() - start_time
+
+            if elapsed >= 60:
+                elapsed_str = f"{int(elapsed // 60)}m {int(elapsed % 60)}s"
+            else:
+                elapsed_str = f"{elapsed:.1f}s"
 
             summary = (
-                f"✓ Enriched {total} jobs in {elapsed_mins} minutes | "
+                f"✓ Enriched {total} jobs in {elapsed_str} | "
                 f"{jobs_with_assets} have assets"
             )
 
@@ -297,7 +356,7 @@ class ZuperSync:
                 error_details = ", ".join([f"{k}: {v}" for k, v in errors_by_type.items()])
                 progress_callback(f"⚠️ Error breakdown: {error_details}")
 
-        return enriched_jobs
+        return jobs
 
     def sync_jobs_in_batches(self, jobs: List[Dict], batch_size: int = 150, progress_callback=None) -> Dict:
         """
