@@ -31,37 +31,63 @@ class ZuperSync:
         }
     
     def fetch_jobs_from_api(self, progress_callback=None) -> List[Dict]:
-        """Fetch all jobs from Zuper API"""
+        """Fetch all jobs from Zuper API with robust error handling"""
         if progress_callback:
-            progress_callback("Fetching jobs from Zuper API...")
+            progress_callback("🔄 Fetching jobs from Zuper API...")
 
         url = f"{self.base_url}/api/jobs"
         jobs = []
         page = 1
         page_size = 100
+        max_retries = 3
+        retry_count = 0
 
         while True:
             if progress_callback:
-                progress_callback(f"Fetching page {page}...")
+                progress_callback(f"📄 Fetching page {page}... ({len(jobs)} jobs fetched so far)")
 
             params = {
                 'page': page,
-                'count': page_size  # Changed from 'limit' to 'count' to match working script
+                'count': page_size
             }
 
             try:
                 response = requests.get(url, headers=self.headers, params=params, timeout=30)
                 response.raise_for_status()
-            except requests.exceptions.Timeout:
-                if progress_callback:
-                    progress_callback(f"⚠️ Request timeout on page {page}. Retrying...")
-                continue  # Retry the same page
-            except requests.exceptions.RequestException as e:
-                if progress_callback:
-                    progress_callback(f"❌ API error on page {page}: {str(e)}")
-                break  # Stop fetching on error
+                retry_count = 0  # Reset retry count on success
 
-            data = response.json()
+            except requests.exceptions.Timeout:
+                retry_count += 1
+                if retry_count < max_retries:
+                    if progress_callback:
+                        progress_callback(f"⚠️ Request timeout on page {page}. Retry {retry_count}/{max_retries}...")
+                    time.sleep(2)  # Wait before retry
+                    continue
+                else:
+                    error_msg = f"❌ Failed to fetch page {page} after {max_retries} retries (timeout)"
+                    if progress_callback:
+                        progress_callback(error_msg)
+                    raise Exception(error_msg)
+
+            except requests.exceptions.HTTPError as e:
+                error_msg = f"❌ HTTP error on page {page}: {e.response.status_code} - {str(e)}"
+                if progress_callback:
+                    progress_callback(error_msg)
+                raise Exception(error_msg)
+
+            except requests.exceptions.RequestException as e:
+                error_msg = f"❌ Network error on page {page}: {str(e)}"
+                if progress_callback:
+                    progress_callback(error_msg)
+                raise Exception(error_msg)
+
+            try:
+                data = response.json()
+            except json.JSONDecodeError as e:
+                error_msg = f"❌ Invalid JSON response on page {page}: {str(e)}"
+                if progress_callback:
+                    progress_callback(error_msg)
+                raise Exception(error_msg)
 
             # Check response structure
             if data.get('type') == 'success':
@@ -274,52 +300,75 @@ class ZuperSync:
         return enriched_jobs
 
     def sync_to_database(self, jobs: List[Dict], progress_callback=None) -> Dict:
-        """Sync jobs to database and return stats"""
-        if progress_callback:
-            progress_callback("Initializing database...")
-        
-        init_database()
-        
-        if progress_callback:
-            progress_callback(f"Syncing {len(jobs)} jobs to database...")
-        
-        from sync_jobs_to_db import (
-            sync_jobs_to_database,
-            extract_line_items,
-            extract_checklist_parts,
-            extract_netsuite_id
-        )
-        
-        # Use existing sync function
-        sync_jobs_to_database(jobs)
-        
-        # Get summary stats
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT COUNT(*) FROM jobs")
-        total_jobs = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM jobs WHERE has_line_items = 1")
-        jobs_with_items = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM jobs WHERE has_netsuite_id = 1")
-        jobs_with_netsuite = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(DISTINCT job_uid) FROM validation_flags WHERE is_resolved = 0")
-        jobs_with_flags = cursor.fetchone()[0]
-        
-        conn.close()
-        
-        if progress_callback:
-            progress_callback("Sync complete!")
-        
-        return {
-            'total_jobs': total_jobs,
-            'jobs_with_items': jobs_with_items,
-            'jobs_with_netsuite': jobs_with_netsuite,
-            'jobs_with_flags': jobs_with_flags
-        }
+        """Sync jobs to database with robust error handling"""
+        try:
+            if progress_callback:
+                progress_callback("🔧 Initializing database...")
+
+            init_database()
+
+            if progress_callback:
+                progress_callback(f"💾 Syncing {len(jobs)} jobs to database...")
+
+            from sync_jobs_to_db import sync_jobs_to_database
+
+            # Use existing sync function with error handling
+            try:
+                sync_jobs_to_database(jobs)
+            except Exception as e:
+                error_msg = f"❌ Database sync error: {str(e)}"
+                if progress_callback:
+                    progress_callback(error_msg)
+                raise Exception(error_msg)
+
+            # Get summary stats with error handling
+            try:
+                conn = sqlite3.connect(DB_FILE)
+                cursor = conn.cursor()
+            except sqlite3.Error as e:
+                error_msg = f"❌ Database connection error: {str(e)}"
+                if progress_callback:
+                    progress_callback(error_msg)
+                raise Exception(error_msg)
+
+                cursor.execute("SELECT COUNT(*) FROM jobs")
+                total_jobs = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(*) FROM jobs WHERE has_line_items = 1")
+                jobs_with_items = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(*) FROM jobs WHERE has_netsuite_id = 1")
+                jobs_with_netsuite = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(DISTINCT job_uid) FROM validation_flags WHERE is_resolved = 0")
+                jobs_with_flags = cursor.fetchone()[0]
+
+                conn.close()
+
+                if progress_callback:
+                    progress_callback("✅ Sync complete!")
+
+                return {
+                    'total_jobs': total_jobs,
+                    'jobs_with_items': jobs_with_items,
+                    'jobs_with_netsuite': jobs_with_netsuite,
+                    'jobs_with_flags': jobs_with_flags
+                }
+
+            except sqlite3.Error as e:
+                error_msg = f"❌ Database query error: {str(e)}"
+                if progress_callback:
+                    progress_callback(error_msg)
+                if conn:
+                    conn.close()
+                raise Exception(error_msg)
+
+        except Exception as e:
+            # Catch-all for any other errors
+            error_msg = f"❌ Unexpected sync error: {str(e)}"
+            if progress_callback:
+                progress_callback(error_msg)
+            raise
 
 
 def init_database():
