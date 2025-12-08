@@ -389,14 +389,14 @@ with st.sidebar:
 
                 # Auto-detect sync type
                 if job_count == 0:
-                    # Empty database - do full sync
-                    status_text.info("🔄 Database empty - performing initial sync...")
+                    # Empty database - do full sync with batch processing
+                    status_text.info("🔄 Database empty - performing initial sync in batches...")
                     jobs = syncer.fetch_jobs_from_api(progress_callback)
-                    jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
-                    stats = syncer.sync_to_database(jobs, progress_callback)
+                    # Use batch sync which includes enrichment
+                    stats = syncer.sync_jobs_in_batches(jobs, batch_size=150, progress_callback=progress_callback)
 
                     progress_text.empty()
-                    status_text.success(f"✅ Initial sync complete! Loaded {stats['total_jobs']} jobs")
+                    status_text.success(f"✅ Initial sync complete! Loaded {stats['total_jobs']} jobs with asset data.")
                     st.rerun()
                 else:
                     # Database has data - do quick sync
@@ -404,8 +404,8 @@ with st.sidebar:
                     jobs = syncer.fetch_updated_jobs_only(progress_callback)
 
                     if jobs:
-                        jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
-                        stats = syncer.sync_to_database(jobs, progress_callback)
+                        # Use batch sync for consistency - handles both small and large updates
+                        stats = syncer.sync_jobs_in_batches(jobs, batch_size=150, progress_callback=progress_callback)
 
                         progress_text.empty()
                         status_text.success(f"✅ Updated {len(jobs)} jobs")
@@ -416,7 +416,11 @@ with st.sidebar:
 
             except Exception as e:
                 progress_text.empty()
-                status_text.error(f"❌ Sync failed: {e}")
+                # Show detailed error with expandable details
+                status_text.error(f"❌ Sync failed: {str(e)}")
+                with st.expander("📋 Error Details", expanded=False):
+                    st.code(f"Error Type: {type(e).__name__}\nError Message: {str(e)}", language="text")
+                    st.caption("If this error persists, try using 'Force Quick Sync' or 'Force Full Sync' in Advanced Options.")
 
         # Advanced options in expander (for admins who need full resync)
         with st.expander("⚙️ Advanced Sync Options"):
@@ -451,7 +455,7 @@ with st.sidebar:
                         status_text.error(f"❌ Sync failed: {e}")
 
             with col2:
-                if st.button("🔄 Force Full Sync", use_container_width=True, help="Resync all jobs (slow)"):
+                if st.button("🔄 Force Full Sync", use_container_width=True, help="Resync all jobs with batch processing"):
                     progress_text = st.empty()
                     status_text = st.empty()
 
@@ -459,19 +463,19 @@ with st.sidebar:
                         progress_text.info(msg)
 
                     try:
-                        status_text.info("🔄 Starting full sync...")
+                        status_text.info("🔄 Starting full sync in batches...")
                         syncer = ZuperSync(api_key, base_url)
                         jobs = syncer.fetch_jobs_from_api(progress_callback)
-                        jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
-                        stats = syncer.sync_to_database(jobs, progress_callback)
+                        # Use batch sync with enrichment
+                        stats = syncer.sync_jobs_in_batches(jobs, batch_size=150, progress_callback=progress_callback)
 
                         progress_text.empty()
-                        status_text.success(f"✅ Synced {stats['total_jobs']} jobs!")
+                        status_text.success(f"✅ Synced {stats['total_jobs']} jobs with asset data!")
                         st.rerun()
                     except Exception as e:
                         progress_text.empty()
                         status_text.error(f"❌ Sync failed: {e}")
-    
+
     st.divider()
     
     # Last sync info
@@ -600,6 +604,188 @@ with col4:
     else:
         st.session_state.asset_filter = ''
 
+# Bulk Serial Number Lookup
+with st.expander("📋 Bulk Serial Number Lookup"):
+    st.caption("Search for multiple serial numbers at once - paste a list or upload a CSV")
+
+    tab1, tab2 = st.tabs(["📝 Paste List", "📁 Upload CSV"])
+
+    with tab1:
+        bulk_serials_text = st.text_area(
+            "Paste serial numbers (one per line)",
+            placeholder="CR-SM-12345\nCR-SM-12346\nCR-SM-12347\n...",
+            height=150,
+            key="bulk_serials_input"
+        )
+
+        if st.button("🔍 Search Serial Numbers", type="primary"):
+            if bulk_serials_text:
+                # Parse serial numbers from text
+                serials = [s.strip() for s in bulk_serials_text.split('\n') if s.strip()]
+
+                # Search for each serial
+                conn = get_db_connection()
+                cursor = conn.cursor()
+
+                results = []
+                for serial in serials:
+                    # Search in both line items and checklist parts
+                    cursor.execute("""
+                        SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
+                               j.created_at, j.asset_name, j.service_team,
+                               li.item_serial as line_item_serial,
+                               cp.part_serial as checklist_serial
+                        FROM jobs j
+                        LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
+                            AND (li.item_serial LIKE ? OR li.item_serial LIKE ?)
+                        LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
+                            AND (cp.part_serial LIKE ? OR cp.part_serial LIKE ?)
+                        WHERE li.item_serial IS NOT NULL OR cp.part_serial IS NOT NULL
+                        ORDER BY j.created_at DESC
+                    """, (f'%{serial}%', f'%{serial}%', f'%{serial}%', f'%{serial}%'))
+
+                    rows = cursor.fetchall()
+                    for row in rows:
+                        results.append({
+                            'searched_serial': serial,
+                            'job_number': row['job_number'],
+                            'job_title': row['job_title'],
+                            'customer': row['customer_name'],
+                            'asset': row['asset_name'] or 'N/A',
+                            'service_team': row['service_team'] or 'N/A',
+                            'created_at': row['created_at'],
+                            'job_uid': row['job_uid']
+                        })
+
+                conn.close()
+
+                if results:
+                    st.success(f"✅ Found {len(results)} job(s) across {len(serials)} serial numbers")
+
+                    # Display results in a dataframe
+                    df = pd.DataFrame(results)
+                    df['Zuper Link'] = df['job_uid'].apply(lambda x: f"https://web.zuperpro.com/jobs/{x}/details")
+
+                    # Reorder columns
+                    display_df = df[['searched_serial', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
+                    display_df.columns = ['Serial Searched', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
+
+                    st.dataframe(display_df, use_container_width=True)
+
+                    # Download button
+                    csv = display_df.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download Results as CSV",
+                        data=csv,
+                        file_name="serial_lookup_results.csv",
+                        mime="text/csv"
+                    )
+
+                    # Show which serials weren't found
+                    found_serials = set(df['searched_serial'].unique())
+                    not_found = [s for s in serials if s not in found_serials]
+                    if not_found:
+                        st.warning(f"⚠️ {len(not_found)} serial(s) not found: {', '.join(not_found)}")
+                else:
+                    st.error("❌ No jobs found for the provided serial numbers")
+            else:
+                st.warning("⚠️ Please enter serial numbers to search")
+
+    with tab2:
+        uploaded_file = st.file_uploader("Upload CSV with serial numbers", type=['csv'])
+
+        if uploaded_file is not None:
+            try:
+                # Read CSV
+                import io
+                csv_data = pd.read_csv(uploaded_file)
+
+                # Try to find serial column
+                serial_column = None
+                for col in csv_data.columns:
+                    if 'serial' in col.lower():
+                        serial_column = col
+                        break
+
+                if serial_column:
+                    serials = csv_data[serial_column].dropna().astype(str).tolist()
+                    st.info(f"📊 Found {len(serials)} serial numbers in column '{serial_column}'")
+
+                    if st.button("🔍 Search from CSV", type="primary"):
+                        # Same search logic as tab1
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+
+                        results = []
+                        for serial in serials:
+                            serial = serial.strip()
+                            if not serial:
+                                continue
+
+                            cursor.execute("""
+                                SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
+                                       j.created_at, j.asset_name, j.service_team,
+                                       li.item_serial as line_item_serial,
+                                       cp.part_serial as checklist_serial
+                                FROM jobs j
+                                LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
+                                    AND (li.item_serial LIKE ? OR li.item_serial LIKE ?)
+                                LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
+                                    AND (cp.part_serial LIKE ? OR cp.part_serial LIKE ?)
+                                WHERE li.item_serial IS NOT NULL OR cp.part_serial IS NOT NULL
+                                ORDER BY j.created_at DESC
+                            """, (f'%{serial}%', f'%{serial}%', f'%{serial}%', f'%{serial}%'))
+
+                            rows = cursor.fetchall()
+                            for row in rows:
+                                results.append({
+                                    'searched_serial': serial,
+                                    'job_number': row['job_number'],
+                                    'job_title': row['job_title'],
+                                    'customer': row['customer_name'],
+                                    'asset': row['asset_name'] or 'N/A',
+                                    'service_team': row['service_team'] or 'N/A',
+                                    'created_at': row['created_at'],
+                                    'job_uid': row['job_uid']
+                                })
+
+                        conn.close()
+
+                        if results:
+                            st.success(f"✅ Found {len(results)} job(s) across {len(serials)} serial numbers")
+
+                            df = pd.DataFrame(results)
+                            df['Zuper Link'] = df['job_uid'].apply(lambda x: f"https://web.zuperpro.com/jobs/{x}/details")
+
+                            display_df = df[['searched_serial', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
+                            display_df.columns = ['Serial Searched', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
+
+                            st.dataframe(display_df, use_container_width=True)
+
+                            csv = display_df.to_csv(index=False)
+                            st.download_button(
+                                label="📥 Download Results as CSV",
+                                data=csv,
+                                file_name="serial_lookup_results.csv",
+                                mime="text/csv"
+                            )
+
+                            found_serials = set(df['searched_serial'].unique())
+                            not_found = [s for s in serials if s not in found_serials]
+                            if not_found:
+                                with st.expander(f"⚠️ {len(not_found)} serial(s) not found"):
+                                    st.write(', '.join(not_found))
+                        else:
+                            st.error("❌ No jobs found for the provided serial numbers")
+                else:
+                    st.warning("⚠️ Could not find a column with 'serial' in the name. Please make sure your CSV has a column containing serial numbers.")
+                    st.caption(f"Available columns: {', '.join(csv_data.columns)}")
+
+            except Exception as e:
+                st.error(f"❌ Error reading CSV: {e}")
+
+st.divider()
+
 # Jobs table
 jobs, total_count = get_jobs(
     st.session_state.current_filter,
@@ -615,7 +801,50 @@ jobs, total_count = get_jobs(
     st.session_state.asset_filter
 )
 
-st.subheader(f"Jobs ({total_count} total)")
+# Show filter status with total database count
+active_filters = []
+if st.session_state.current_filter == 'flagged':
+    active_filters.append("Flagged Only")
+if st.session_state.month_filter:
+    active_filters.append(f"Month: {st.session_state.month_filter}")
+if st.session_state.org_filter:
+    active_filters.append(f"Org: {st.session_state.org_filter}")
+if st.session_state.team_filter:
+    active_filters.append(f"Team: {st.session_state.team_filter}")
+if st.session_state.asset_filter:
+    active_filters.append(f"Asset: {st.session_state.asset_filter}")
+if st.session_state.start_date or st.session_state.end_date:
+    date_str = f"{st.session_state.start_date or '...'} to {st.session_state.end_date or '...'}"
+    active_filters.append(f"Date Range: {date_str}")
+if st.session_state.job_number_search:
+    active_filters.append(f"Job#: {st.session_state.job_number_search}")
+if st.session_state.part_search:
+    active_filters.append(f"Part: {st.session_state.part_search}")
+if st.session_state.serial_search:
+    active_filters.append(f"Serial: {st.session_state.serial_search}")
+
+# Display header with filter status
+col_header1, col_header2 = st.columns([3, 1])
+with col_header1:
+    if active_filters:
+        st.subheader(f"Jobs: Showing {total_count} of {metrics['total_jobs']} total")
+        st.caption(f"Active filters: {' | '.join(active_filters)}")
+    else:
+        st.subheader(f"Jobs ({total_count} total)")
+with col_header2:
+    if active_filters:
+        if st.button("Clear All Filters", use_container_width=True):
+            st.session_state.current_filter = 'all'
+            st.session_state.month_filter = ''
+            st.session_state.org_filter = ''
+            st.session_state.team_filter = ''
+            st.session_state.asset_filter = ''
+            st.session_state.start_date = None
+            st.session_state.end_date = None
+            st.session_state.job_number_search = ''
+            st.session_state.part_search = ''
+            st.session_state.serial_search = ''
+            st.rerun()
 
 if jobs:
     # Display jobs as interactive rows with inline action buttons
