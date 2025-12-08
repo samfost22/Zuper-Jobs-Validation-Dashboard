@@ -801,7 +801,50 @@ jobs, total_count = get_jobs(
     st.session_state.asset_filter
 )
 
-st.subheader(f"Jobs ({total_count} total)")
+# Show filter status with total database count
+active_filters = []
+if st.session_state.current_filter == 'flagged':
+    active_filters.append("Flagged Only")
+if st.session_state.month_filter:
+    active_filters.append(f"Month: {st.session_state.month_filter}")
+if st.session_state.org_filter:
+    active_filters.append(f"Org: {st.session_state.org_filter}")
+if st.session_state.team_filter:
+    active_filters.append(f"Team: {st.session_state.team_filter}")
+if st.session_state.asset_filter:
+    active_filters.append(f"Asset: {st.session_state.asset_filter}")
+if st.session_state.start_date or st.session_state.end_date:
+    date_str = f"{st.session_state.start_date or '...'} to {st.session_state.end_date or '...'}"
+    active_filters.append(f"Date Range: {date_str}")
+if st.session_state.job_number_search:
+    active_filters.append(f"Job#: {st.session_state.job_number_search}")
+if st.session_state.part_search:
+    active_filters.append(f"Part: {st.session_state.part_search}")
+if st.session_state.serial_search:
+    active_filters.append(f"Serial: {st.session_state.serial_search}")
+
+# Display header with filter status
+col_header1, col_header2 = st.columns([3, 1])
+with col_header1:
+    if active_filters:
+        st.subheader(f"Jobs: Showing {total_count} of {metrics['total_jobs']} total")
+        st.caption(f"Active filters: {' | '.join(active_filters)}")
+    else:
+        st.subheader(f"Jobs ({total_count} total)")
+with col_header2:
+    if active_filters:
+        if st.button("Clear All Filters", use_container_width=True):
+            st.session_state.current_filter = 'all'
+            st.session_state.month_filter = ''
+            st.session_state.org_filter = ''
+            st.session_state.team_filter = ''
+            st.session_state.asset_filter = ''
+            st.session_state.start_date = None
+            st.session_state.end_date = None
+            st.session_state.job_number_search = ''
+            st.session_state.part_search = ''
+            st.session_state.serial_search = ''
+            st.rerun()
 
 if jobs:
     # Display jobs as interactive rows with inline action buttons
