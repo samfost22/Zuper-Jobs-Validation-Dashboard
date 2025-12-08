@@ -8,6 +8,9 @@ font = "sans serif"
 [server]
 headless = true
 port = 8501
+maxUploadSize = 200
+enableXsrfProtection = false
+runOnSave = false
 
 [browser]
 gatherUsageStats = false
