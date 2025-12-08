@@ -389,22 +389,27 @@ with st.sidebar:
 
                 # Auto-detect sync type
                 if job_count == 0:
-                    # Empty database - do full sync
-                    status_text.info("🔄 Database empty - performing initial sync...")
+                    # Empty database - do full sync WITHOUT enrichment (too slow)
+                    status_text.info("🔄 Database empty - performing initial sync (without asset enrichment for speed)...")
                     jobs = syncer.fetch_jobs_from_api(progress_callback)
-                    jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
+                    # Skip enrichment for full sync to avoid timeout
                     stats = syncer.sync_to_database(jobs, progress_callback)
 
                     progress_text.empty()
-                    status_text.success(f"✅ Initial sync complete! Loaded {stats['total_jobs']} jobs")
+                    status_text.success(f"✅ Initial sync complete! Loaded {stats['total_jobs']} jobs. Use 'Enrich Assets' to add asset data.")
                     st.rerun()
                 else:
-                    # Database has data - do quick sync
+                    # Database has data - do quick sync WITH enrichment (small number of jobs)
                     status_text.info("⚡ Checking for updates...")
                     jobs = syncer.fetch_updated_jobs_only(progress_callback)
 
                     if jobs:
-                        jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
+                        # Only enrich if small number of jobs
+                        if len(jobs) <= 100:
+                            jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
+                        else:
+                            progress_callback(f"⚠️ Skipping enrichment for {len(jobs)} jobs (use 'Enrich Assets' button)")
+
                         stats = syncer.sync_to_database(jobs, progress_callback)
 
                         progress_text.empty()
@@ -451,7 +456,7 @@ with st.sidebar:
                         status_text.error(f"❌ Sync failed: {e}")
 
             with col2:
-                if st.button("🔄 Force Full Sync", use_container_width=True, help="Resync all jobs (slow)"):
+                if st.button("🔄 Force Full Sync", use_container_width=True, help="Resync all jobs without enrichment"):
                     progress_text = st.empty()
                     status_text = st.empty()
 
@@ -459,19 +464,78 @@ with st.sidebar:
                         progress_text.info(msg)
 
                     try:
-                        status_text.info("🔄 Starting full sync...")
+                        status_text.info("🔄 Starting full sync (without enrichment)...")
                         syncer = ZuperSync(api_key, base_url)
                         jobs = syncer.fetch_jobs_from_api(progress_callback)
-                        jobs = syncer.enrich_jobs_with_assets(jobs, progress_callback)
+                        # Skip enrichment to avoid timeout
                         stats = syncer.sync_to_database(jobs, progress_callback)
 
                         progress_text.empty()
-                        status_text.success(f"✅ Synced {stats['total_jobs']} jobs!")
+                        status_text.success(f"✅ Synced {stats['total_jobs']} jobs! Use 'Enrich Assets' to add asset data.")
                         st.rerun()
                     except Exception as e:
                         progress_text.empty()
                         status_text.error(f"❌ Sync failed: {e}")
-    
+
+            st.divider()
+            st.caption("Asset Enrichment")
+
+            # Enrich Assets button - for adding asset data to jobs without it
+            if st.button("🎨 Enrich Assets", use_container_width=True, help="Add asset data to jobs (runs in batches to avoid timeout)"):
+                progress_text = st.empty()
+                status_text = st.empty()
+
+                def progress_callback(msg):
+                    progress_text.info(msg)
+
+                try:
+                    # Get jobs without assets
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT job_uid FROM jobs
+                        WHERE asset_name IS NULL OR asset_name = ''
+                        ORDER BY created_at DESC
+                    """)
+                    jobs_to_enrich = cursor.fetchall()
+                    conn.close()
+
+                    if not jobs_to_enrich:
+                        status_text.info("ℹ️ All jobs already have asset data!")
+                    else:
+                        total_count = len(jobs_to_enrich)
+                        status_text.info(f"🎨 Found {total_count} jobs to enrich. Processing in batches...")
+
+                        # Process in batches of 500 to avoid timeout
+                        batch_size = 500
+                        for batch_num in range(0, total_count, batch_size):
+                            batch_end = min(batch_num + batch_size, total_count)
+                            batch_jobs = jobs_to_enrich[batch_num:batch_end]
+
+                            progress_callback(f"Processing batch {batch_num // batch_size + 1} ({batch_num + 1}-{batch_end} of {total_count})...")
+
+                            # Fetch job details for this batch
+                            syncer = ZuperSync(api_key, base_url)
+                            jobs_data = []
+                            for row in batch_jobs:
+                                job_uid = row['job_uid']
+                                job_details, error = syncer.fetch_job_details(job_uid)
+                                if job_details:
+                                    jobs_data.append(job_details)
+
+                            # Update database with enriched data
+                            if jobs_data:
+                                syncer.sync_to_database(jobs_data, progress_callback)
+                                progress_callback(f"✅ Batch {batch_num // batch_size + 1} complete ({len(jobs_data)} jobs enriched)")
+
+                        progress_text.empty()
+                        status_text.success(f"✅ Enrichment complete! Processed {total_count} jobs")
+                        st.rerun()
+
+                except Exception as e:
+                    progress_text.empty()
+                    status_text.error(f"❌ Enrichment failed: {e}")
+
     st.divider()
     
     # Last sync info
