@@ -226,19 +226,22 @@ class ZuperSync:
 
     def enrich_jobs_with_assets(self, jobs: List[Dict], progress_callback=None) -> List[Dict]:
         """
-        Enrich job list with asset data from individual job details using parallel requests.
+        Fetch full job details for each job using parallel requests.
+
+        Replaces partial job data from list API with complete data from detail API,
+        including assets, line_items, checklists, custom_fields, and all other fields.
 
         Uses ThreadPoolExecutor for concurrent API calls, dramatically improving performance.
         Includes robust error handling, retry logic, and detailed progress tracking.
         """
         if progress_callback:
-            progress_callback(f"🚀 Enriching {len(jobs)} jobs with asset data ({self.max_workers} parallel workers)...")
+            progress_callback(f"🚀 Fetching full job details ({self.max_workers} parallel workers)...")
 
         total = len(jobs)
         if total == 0:
             return jobs
 
-        # Thread-safe counters for progress tracking
+        # Thread-safe counters and results storage
         completed_count = 0
         error_count = 0
         timeout_count = 0
@@ -246,36 +249,38 @@ class ZuperSync:
         counter_lock = threading.Lock()
         errors_by_type = {}
 
+        # Store enriched jobs by index to maintain order
+        enriched_jobs = [None] * total
+        job_uid_to_index = {job.get('job_uid'): idx for idx, job in enumerate(jobs)}
+
         start_time = time.time()
 
-        # Create a mapping of job_uid to job for easy lookup
-        job_map = {job.get('job_uid'): job for job in jobs}
-
-        def fetch_and_enrich(job_uid: str) -> Tuple[str, Optional[List], Optional[str]]:
-            """Fetch job details and return (job_uid, assets, error)"""
+        def fetch_full_details(job_uid: str) -> Tuple[str, Optional[Dict], Optional[str]]:
+            """Fetch complete job details and return (job_uid, full_job_data, error)"""
             job_details, error = self.fetch_job_details(job_uid)
 
             if error:
                 return job_uid, None, error
-            elif job_details and 'assets' in job_details:
-                return job_uid, job_details.get('assets', []), None
+            elif job_details:
+                return job_uid, job_details, None
             else:
-                return job_uid, [], None
+                return job_uid, None, "Empty response"
 
         # Submit all jobs to the thread pool
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all fetch tasks
             future_to_uid = {
-                executor.submit(fetch_and_enrich, job.get('job_uid')): job.get('job_uid')
+                executor.submit(fetch_full_details, job.get('job_uid')): job.get('job_uid')
                 for job in jobs
             }
 
             # Process results as they complete
             for future in as_completed(future_to_uid):
                 job_uid = future_to_uid[future]
+                idx = job_uid_to_index.get(job_uid)
 
                 try:
-                    uid, assets, error = future.result()
+                    uid, full_job_data, error = future.result()
 
                     with counter_lock:
                         completed_count += 1
@@ -290,13 +295,14 @@ class ZuperSync:
                             elif '429' in error or 'rate limit' in error.lower():
                                 rate_limit_count += 1
 
-                            # Add empty assets on error
-                            if uid in job_map:
-                                job_map[uid]['assets'] = []
+                            # On error, keep original job data from list API
+                            if idx is not None:
+                                enriched_jobs[idx] = jobs[idx]
+                                enriched_jobs[idx]['assets'] = []  # Ensure assets field exists
                         else:
-                            # Successfully got assets
-                            if uid in job_map:
-                                job_map[uid]['assets'] = assets if assets else []
+                            # Use full job data from detail API
+                            if idx is not None:
+                                enriched_jobs[idx] = full_job_data
 
                         # Progress update every 100 jobs
                         if progress_callback and completed_count % 100 == 0:
@@ -311,7 +317,7 @@ class ZuperSync:
                                 eta_str = f"{eta_secs}s"
 
                             progress_msg = (
-                                f"Enriching: {completed_count}/{total} ({int(completed_count/total * 100)}%) | "
+                                f"Fetching details: {completed_count}/{total} ({int(completed_count/total * 100)}%) | "
                                 f"Rate: {rate:.1f} jobs/sec | ETA: {eta_str}"
                             )
                             if error_count > 0:
@@ -323,12 +329,14 @@ class ZuperSync:
                     with counter_lock:
                         completed_count += 1
                         error_count += 1
-                        if job_uid in job_map:
-                            job_map[job_uid]['assets'] = []
+                        # On exception, keep original job data
+                        if idx is not None:
+                            enriched_jobs[idx] = jobs[idx]
+                            enriched_jobs[idx]['assets'] = []
 
         # Final summary
         if progress_callback:
-            jobs_with_assets = sum(1 for j in jobs if j.get('assets'))
+            jobs_with_assets = sum(1 for j in enriched_jobs if j and j.get('assets'))
             elapsed = time.time() - start_time
 
             if elapsed >= 60:
@@ -337,7 +345,7 @@ class ZuperSync:
                 elapsed_str = f"{elapsed:.1f}s"
 
             summary = (
-                f"✓ Enriched {total} jobs in {elapsed_str} | "
+                f"✓ Fetched {total} job details in {elapsed_str} | "
                 f"{jobs_with_assets} have assets"
             )
 
@@ -356,7 +364,7 @@ class ZuperSync:
                 error_details = ", ".join([f"{k}: {v}" for k, v in errors_by_type.items()])
                 progress_callback(f"⚠️ Error breakdown: {error_details}")
 
-        return jobs
+        return enriched_jobs
 
     def sync_jobs_in_batches(self, jobs: List[Dict], batch_size: int = 150, progress_callback=None) -> Dict:
         """

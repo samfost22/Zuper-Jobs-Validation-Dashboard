@@ -17,6 +17,23 @@ DATA_DIR.mkdir(exist_ok=True)
 DB_FILE = str(DATA_DIR / 'jobs_validation.db')
 JOBS_DATA_FILE = 'jobs_data.json'
 
+# Configuration constants
+ALLOWED_JOB_CATEGORIES = [
+    'LaserWeeder Service Call',
+    'WM Service - In Field',
+    'WM Repair - In Shop'
+]
+
+SKIP_VALIDATION_CATEGORIES = [
+    'field requires parts',
+    'reaper pm',
+    'slayer pm',
+]
+
+CONSUMABLE_TERMS = ['consumable', 'consumables', 'supplies', 'service']
+
+SERIAL_PATTERN = r'CR-SM-\d{5,6}(?:-RW)?'
+
 def init_database():
     """Initialize the SQLite database with schema"""
     print("Initializing database...")
@@ -59,10 +76,7 @@ def extract_serial_from_text(text):
     if not text:
         return []
 
-    # Pattern: CR-SM-XXXXX or CR-SM-XXXXX-RW
-    pattern = r'CR-SM-\d{5,6}(?:-RW)?'
-    matches = re.findall(pattern, str(text), re.IGNORECASE)
-
+    matches = re.findall(SERIAL_PATTERN, str(text), re.IGNORECASE)
     return [m.upper() for m in matches]
 
 def extract_asset_from_job(job):
@@ -252,11 +266,7 @@ def sync_jobs_to_database(jobs):
     cursor = conn.cursor()
 
     # Define allowed job categories (ALLOWLIST approach)
-    allowed_categories = [
-        'LaserWeeder Service Call',
-        'WM Service - In Field',
-        'WM Repair - In Shop'
-    ]
+    allowed_categories = ALLOWED_JOB_CATEGORIES
     print(f"Filtering for allowed job categories: {', '.join(allowed_categories)}")
 
     # Clean up jobs not in allowed categories from previous syncs
@@ -499,13 +509,7 @@ def validate_job(job_uid, line_items, checklist_parts, netsuite_id, job_category
     flags = []
 
     # Skip validation for certain job categories that don't need NetSuite tracking
-    skip_categories = [
-        'field requires parts',  # Parts requests
-        'reaper pm',             # Preventive maintenance
-        'slayer pm',             # Preventive maintenance
-    ]
-
-    if any(category in job_category.lower() for category in skip_categories):
+    if any(category in job_category.lower() for category in SKIP_VALIDATION_CATEGORIES):
         return flags
 
     # Rule 1: If job has line items but no NetSuite ID
@@ -520,8 +524,10 @@ def validate_job(job_uid, line_items, checklist_parts, netsuite_id, job_category
             item_type = (item.get('line_item_type') or '').lower()
 
             # Check if this is a consumable or service (these don't need NetSuite tracking)
-            is_consumable = any(term in item_name or term in item_code or term in item_serial or term in item_type
-                              for term in ['consumable', 'consumables', 'supplies', 'service'])
+            is_consumable = any(
+                term in item_name or term in item_code or term in item_serial or term in item_type
+                for term in CONSUMABLE_TERMS
+            )
 
             if not is_consumable:
                 non_consumable_items.append(item)
