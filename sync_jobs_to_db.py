@@ -11,16 +11,28 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from config import (
-    JOBS_DB_FILE as DB_FILE,
-    ROOT_DIR,
-    ALLOWED_JOB_CATEGORIES,
-    SKIP_VALIDATION_CATEGORIES,
-    CONSUMABLE_TERMS,
-    SERIAL_PATTERN,
-)
-
+# Use persistent data directory
+DATA_DIR = Path(__file__).parent / 'data'
+DATA_DIR.mkdir(exist_ok=True)
+DB_FILE = str(DATA_DIR / 'jobs_validation.db')
 JOBS_DATA_FILE = 'jobs_data.json'
+
+# Configuration constants
+ALLOWED_JOB_CATEGORIES = [
+    'LaserWeeder Service Call',
+    'WM Service - In Field',
+    'WM Repair - In Shop'
+]
+
+SKIP_VALIDATION_CATEGORIES = [
+    'field requires parts',
+    'reaper pm',
+    'slayer pm',
+]
+
+CONSUMABLE_TERMS = ['consumable', 'consumables', 'supplies', 'service']
+
+SERIAL_PATTERN = r'CR-SM-\d{5,6}(?:-RW)?'
 
 def init_database():
     """Initialize the SQLite database with schema"""
