@@ -421,7 +421,11 @@ with st.sidebar:
 
             except Exception as e:
                 progress_text.empty()
-                status_text.error(f"❌ Sync failed: {e}")
+                # Show detailed error with expandable details
+                status_text.error(f"❌ Sync failed: {str(e)}")
+                with st.expander("📋 Error Details", expanded=False):
+                    st.code(f"Error Type: {type(e).__name__}\nError Message: {str(e)}", language="text")
+                    st.caption("If this error persists, try using 'Force Quick Sync' or 'Force Full Sync' in Advanced Options.")
 
         # Advanced options in expander (for admins who need full resync)
         with st.expander("⚙️ Advanced Sync Options"):
