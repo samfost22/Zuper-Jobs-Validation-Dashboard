@@ -213,7 +213,8 @@ def init_notification_tracking():
     """Initialize the notification tracking table in the database."""
     DATA_DIR.mkdir(exist_ok=True)
 
-    conn = sqlite3.connect(DB_FILE)
+    # Use timeout to handle database locks
+    conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -241,7 +242,7 @@ def init_notification_tracking():
 def was_notification_sent(job_uid: str, notification_type: str = 'missing_netsuite_id') -> bool:
     """Check if a notification was already sent for this job."""
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, timeout=30)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -266,7 +267,7 @@ def record_notification(
 ):
     """Record that a notification was sent (or attempted)."""
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, timeout=30)
         cursor = conn.cursor()
 
         cursor.execute("""
