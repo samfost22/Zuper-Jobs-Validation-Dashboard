@@ -139,11 +139,19 @@ get_service_team(job)
 ```
 
 ### Serial Number Extraction
+
+Serial patterns are defined in `SERIAL_PATTERNS` dict in `sync_jobs_to_db.py`. To add a new pattern, add an entry to the dictionary.
+
+| Part # | Part Type | Pattern | Example |
+|--------|-----------|---------|---------|
+| 0000144 | Scanner Module | `CR-SM-NNNNNN[-RW]` | `CR-SM-000571-RW` |
+| 0000508-C | Y150 Component | `CR-Y150-NNNNNN-R` | `CR-Y150-005032-R` |
+| G4000 | MPC Component | `CR-MPC-NNNNN` | `CR-MPC-00278` |
+| 0000612-B | SM Module | `SM-YYMMDD-NNN` | `SM-250721-002` |
+| 0000675 | Weeding Module | `WM-YYMMDD-NNN` | `WM-250613-004` |
+
 ```python
-# Regex patterns:
-# - CR-SM-XXXXX or CR-SM-XXXXX-RW: Scanner/detector serial numbers
-# - WM-YYMMDD-NNN: Weeding Module serial numbers (e.g., WM-250613-004)
-extract_serial_from_text(text)
+extract_serial_from_text(text)  # Returns list of matched serial numbers
 ```
 
 ## Development Workflows

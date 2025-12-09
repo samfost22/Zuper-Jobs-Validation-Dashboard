@@ -32,10 +32,18 @@ SKIP_VALIDATION_CATEGORIES = [
 
 CONSUMABLE_TERMS = ['consumable', 'consumables', 'supplies', 'service']
 
-# Serial number patterns:
-# - CR-SM-XXXXX or CR-SM-XXXXX-RW: Scanner/detector serial numbers
-# - WM-YYMMDD-NNN: Weeding Module serial numbers (e.g., WM-250613-004)
-SERIAL_PATTERN = r'(?:CR-SM-\d{5,6}(?:-RW)?|WM-\d{6}-\d{3})'
+# Serial number patterns by part type
+# Add new patterns here as needed - they will automatically be included in searches
+SERIAL_PATTERNS = {
+    'scanner_module': r'CR-SM-\d{6}(?:-RW)?',      # 0000144: CR-SM-000571, CR-SM-000571-RW
+    'y150_component': r'CR-Y150-\d{6}-R',          # 0000508-C: CR-Y150-005032-R
+    'mpc_component': r'CR-MPC-\d{5}',              # G4000: CR-MPC-00278
+    'sm_module': r'SM-\d{6}-\d{3}',                # 0000612-B: SM-250721-002
+    'weeding_module': r'WM-\d{6}-\d{3}',           # 0000675: WM-250613-004
+}
+
+# Combined pattern for matching any serial number
+SERIAL_PATTERN = '(?:' + '|'.join(SERIAL_PATTERNS.values()) + ')'
 
 def init_database():
     """Initialize the SQLite database with schema"""
@@ -77,9 +85,14 @@ def load_jobs_data():
 def extract_serial_from_text(text):
     """Extract serial numbers from text using regex.
 
-    Matches:
-    - CR-SM-XXXXX or CR-SM-XXXXX-RW: Scanner/detector serials
-    - WM-YYMMDD-NNN: Weeding Module serials (e.g., WM-250613-004)
+    Matches patterns defined in SERIAL_PATTERNS dict:
+    - CR-SM-NNNNNN[-RW]: Scanner Module (0000144)
+    - CR-Y150-NNNNNN-R: Y150 Component (0000508-C)
+    - CR-MPC-NNNNN: MPC Component (G4000)
+    - SM-YYMMDD-NNN: SM Module (0000612-B)
+    - WM-YYMMDD-NNN: Weeding Module (0000675)
+
+    To add new patterns, update the SERIAL_PATTERNS dictionary.
     """
     if not text:
         return []
