@@ -17,6 +17,9 @@ DATA_DIR.mkdir(exist_ok=True)
 DB_FILE = str(DATA_DIR / 'jobs_validation.db')
 JOBS_DATA_FILE = 'jobs_data.json'
 
+# Slack webhook URL (can be set via environment or passed to sync function)
+SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL', '')
+
 # Configuration constants
 ALLOWED_JOB_CATEGORIES = [
     'LaserWeeder Service Call',
@@ -258,9 +261,19 @@ def get_job_category(job):
         return categories.get('category_name', '')
     return ''
 
-def sync_jobs_to_database(jobs):
-    """Sync all jobs to database"""
+def sync_jobs_to_database(jobs, slack_webhook_url=None):
+    """
+    Sync all jobs to database and send Slack notifications for completed jobs
+    missing NetSuite IDs.
+
+    Args:
+        jobs: List of job dictionaries from Zuper API
+        slack_webhook_url: Optional Slack webhook URL for notifications
+    """
     print("\nSyncing jobs to database...")
+
+    # Use provided webhook URL or fall back to environment variable
+    webhook_url = slack_webhook_url or SLACK_WEBHOOK_URL
 
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -430,7 +443,13 @@ def sync_jobs_to_database(jobs):
             # Clear old flags for this job
             cursor.execute("DELETE FROM validation_flags WHERE job_uid = ?", (job_uid,))
 
-            # Insert new flags
+            # Insert new flags and send notifications
+            job_number = job.get('work_order_number', '') or job.get('job_number', '')
+            job_title = job.get('job_title', '')
+            service_team = get_service_team(job)
+            asset_name = extract_asset_from_job(job)
+            completed_at = get_completion_date(job)
+
             for flag in validation_flags:
                 cursor.execute("""
                     INSERT INTO validation_flags (
@@ -445,6 +464,28 @@ def sync_jobs_to_database(jobs):
                     datetime.now().isoformat()
                 ))
                 flags_created += 1
+
+                # Send Slack notification for completed jobs missing NetSuite ID
+                if (webhook_url and
+                    flag['flag_type'] == 'missing_netsuite_id' and
+                    completed_at):
+                    try:
+                        from notifications.slack_notifier import send_missing_netsuite_notification
+                        line_item_names = flag.get('details', {}).get('line_items', [])
+                        send_missing_netsuite_notification(
+                            webhook_url=webhook_url,
+                            job_uid=job_uid,
+                            job_number=job_number,
+                            job_title=job_title,
+                            organization_name=organization_name,
+                            asset_name=asset_name,
+                            service_team=service_team,
+                            completed_at=completed_at,
+                            line_items=line_item_names
+                        )
+                    except Exception as notif_error:
+                        # Don't fail sync if notification fails
+                        print(f"  Warning: Failed to send Slack notification for {job_number}: {notif_error}")
 
             jobs_processed += 1
 

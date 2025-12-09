@@ -34,6 +34,10 @@ The project contains **two dashboard implementations**:
 ├── sync_jobs_to_db.py         # Core job sync logic and validation rules
 ├── database_jobs_schema.sql   # Jobs database schema
 │
+├── notifications/             # Slack notification system
+│   ├── __init__.py
+│   └── slack_notifier.py      # Slack webhook notifications
+│
 ├── dashboard.py               # SECONDARY: Organization monitoring (Flask)
 ├── sync_to_database.py        # Organization sync to database
 ├── database_schema.sql        # Organization database schema
@@ -63,6 +67,7 @@ The project contains **two dashboard implementations**:
 - `validation_flags` - Validation issues (missing_netsuite_id, parts_replaced_no_line_items)
 - `organizations` - Organization lookup table
 - `sync_log` - Sync operation history
+- `notification_log` - Tracks sent Slack notifications (prevents duplicates)
 
 **Key View:**
 - `job_validation_summary` - Aggregated job data with flag counts
@@ -99,6 +104,43 @@ The project contains **two dashboard implementations**:
 api_key = "your_api_key"
 base_url = "https://us-east-1.zuperpro.com"
 ```
+
+## Slack Notifications
+
+The system can send real-time Slack notifications when jobs are completed without NetSuite Sales Order IDs.
+
+### Setup
+
+1. **Create a Slack App** at https://api.slack.com/apps
+2. **Enable Incoming Webhooks** in your app settings
+3. **Create a webhook** for your channel
+4. **Add to secrets.toml**:
+
+```toml
+[slack]
+webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+```
+
+### Notification Triggers
+
+Notifications are sent when:
+- A job is **completed** (has `completed_at` timestamp)
+- The job has **non-consumable line items**
+- The job is **missing a NetSuite Sales Order ID**
+
+### Notification Content
+
+Each Slack notification includes:
+- Job number with link to Zuper
+- Organization name
+- Asset/serial number
+- Service team who completed the job
+- Completion timestamp
+- List of line items needing the Sales Order ID
+
+### Duplicate Prevention
+
+The system tracks sent notifications in `notification_log` table to prevent duplicate alerts for the same job.
 
 ## Validation Rules
 
