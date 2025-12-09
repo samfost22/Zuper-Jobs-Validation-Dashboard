@@ -406,8 +406,15 @@ class ZuperSync:
                 try:
                     import streamlit as st
                     slack_webhook_url = st.secrets.get("slack", {}).get("webhook_url", "")
-                except:
+                    if slack_webhook_url:
+                        print(f"[Slack] Webhook URL loaded from Streamlit secrets")
+                    else:
+                        print(f"[Slack] No webhook URL in Streamlit secrets")
+                except Exception as e:
+                    print(f"[Slack] Could not read Streamlit secrets: {e}")
                     slack_webhook_url = os.environ.get('SLACK_WEBHOOK_URL', '')
+                    if slack_webhook_url:
+                        print(f"[Slack] Webhook URL loaded from environment variable")
 
                 sync_jobs_to_database(enriched_batch, slack_webhook_url=slack_webhook_url)
                 total_synced += len(enriched_batch)

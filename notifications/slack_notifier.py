@@ -320,7 +320,11 @@ def send_missing_netsuite_notification(
     Returns:
         True if notification was sent successfully
     """
+    print(f"  [Notification] Attempting to send notification for job {job_number}")
+    print(f"  [Notification] Webhook URL: {'configured' if webhook_url else 'NOT CONFIGURED'}")
+
     if not webhook_url:
+        print(f"  [Notification] SKIPPED - No webhook URL configured")
         return False
 
     # Initialize tracking table if needed
@@ -328,7 +332,10 @@ def send_missing_netsuite_notification(
 
     # Check if already notified (unless forced)
     if not force and was_notification_sent(job_uid, 'missing_netsuite_id'):
+        print(f"  [Notification] SKIPPED - Already notified for this job")
         return False  # Already notified, skip
+
+    print(f"  [Notification] Sending to webhook...")
 
     # Detect webhook type and send appropriately
     # Zapier webhooks contain "hooks.zapier.com"
