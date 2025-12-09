@@ -9,7 +9,9 @@ import pandas as pd
 import json
 from datetime import datetime
 from pathlib import Path
+import re
 from streamlit_sync import ZuperSync, test_api_connection
+from sync_jobs_to_db import normalize_serial, SERIAL_PATTERN
 
 # Use persistent data directory
 DATA_DIR = Path(__file__).parent / 'data'
@@ -63,6 +65,35 @@ def get_db_connection():
     conn = sqlite3.connect(DB_FILE, timeout=30.0)  # 30 second timeout
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def normalize_search_input(search_term):
+    """Normalize serial number search input to handle human error.
+
+    Handles:
+    - Extra spaces: "WM 250613 004" → "WM-250613-004"
+    - Missing dashes: "wm250613004" → "WM-250613-004"
+    - Mixed case: "wM-250613-004" → "WM-250613-004"
+    - Partial input: "250613" → "250613" (unchanged, for partial matches)
+
+    Returns normalized serial if it matches a known pattern, otherwise
+    returns cleaned input for partial matching.
+    """
+    if not search_term:
+        return ''
+
+    # Remove spaces and uppercase for pattern matching
+    cleaned = search_term.strip().replace(' ', '')
+
+    # Try to match against known serial patterns
+    matches = re.findall(SERIAL_PATTERN, cleaned, re.IGNORECASE)
+    if matches:
+        # Found a valid serial pattern - normalize it
+        return normalize_serial(matches[0])
+
+    # No pattern match - return cleaned input for partial search
+    # This allows searching by partial serial like "250613" or "000571"
+    return cleaned.upper()
 
 
 @st.cache_data(ttl=60)  # Cache for 60 seconds
@@ -541,7 +572,8 @@ with col2:
 with col3:
     serial_input = st.text_input("🏷️ Serial Number", placeholder="Enter serial number...", key="serial_input")
     if serial_input:
-        st.session_state.serial_search = serial_input
+        # Normalize search input to handle human error (spaces, missing dashes, case)
+        st.session_state.serial_search = normalize_search_input(serial_input)
         st.session_state.current_page = 1  # Reset to page 1 when searching
     else:
         st.session_state.serial_search = ''
@@ -620,15 +652,16 @@ with st.expander("📋 Bulk Serial Number Lookup"):
 
         if st.button("🔍 Search Serial Numbers", type="primary"):
             if bulk_serials_text:
-                # Parse serial numbers from text
-                serials = [s.strip() for s in bulk_serials_text.split('\n') if s.strip()]
+                # Parse and normalize serial numbers from text
+                raw_serials = [s.strip() for s in bulk_serials_text.split('\n') if s.strip()]
+                serials = [normalize_search_input(s) for s in raw_serials]
 
                 # Search for each serial
                 conn = get_db_connection()
                 cursor = conn.cursor()
 
                 results = []
-                for serial in serials:
+                for i, serial in enumerate(serials):
                     # Search in both line items and checklist parts
                     cursor.execute("""
                         SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
@@ -647,7 +680,7 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                     rows = cursor.fetchall()
                     for row in rows:
                         results.append({
-                            'searched_serial': serial,
+                            'searched_serial': f"{raw_serials[i]} → {serial}" if raw_serials[i] != serial else serial,
                             'job_number': row['job_number'],
                             'job_title': row['job_title'],
                             'customer': row['customer_name'],
@@ -708,19 +741,22 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                         break
 
                 if serial_column:
-                    serials = csv_data[serial_column].dropna().astype(str).tolist()
-                    st.info(f"📊 Found {len(serials)} serial numbers in column '{serial_column}'")
+                    raw_serials = csv_data[serial_column].dropna().astype(str).tolist()
+                    st.info(f"📊 Found {len(raw_serials)} serial numbers in column '{serial_column}'")
 
                     if st.button("🔍 Search from CSV", type="primary"):
-                        # Same search logic as tab1
+                        # Normalize serials and search
                         conn = get_db_connection()
                         cursor = conn.cursor()
 
                         results = []
-                        for serial in serials:
-                            serial = serial.strip()
-                            if not serial:
+                        for raw_serial in raw_serials:
+                            raw_serial = raw_serial.strip()
+                            if not raw_serial:
                                 continue
+
+                            # Normalize the serial to handle human error
+                            serial = normalize_search_input(raw_serial)
 
                             cursor.execute("""
                                 SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
