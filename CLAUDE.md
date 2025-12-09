@@ -121,6 +121,28 @@ The system can send real-time Slack notifications when jobs are completed withou
 webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 ```
 
+### Setup (via Zapier - Recommended)
+
+If you don't have Slack API access, use Zapier instead:
+
+1. **Create a Zap** at https://zapier.com
+2. **Trigger**: Choose "Webhooks by Zapier" → "Catch Hook"
+3. **Action**: Choose "Slack" → "Send Channel Message"
+4. **Map the fields** from the webhook to your Slack message:
+   - `job_number` - Job work order number
+   - `organization` - Customer name
+   - `asset` - Asset/serial number
+   - `service_team` - Team that completed job
+   - `completed_at` - Completion time
+   - `line_items` - Parts needing SO ID
+   - `zuper_url` - Link to job in Zuper
+5. **Copy your Zapier webhook URL** and add to secrets.toml:
+
+```toml
+[slack]
+webhook_url = "https://hooks.zapier.com/hooks/catch/YOUR/HOOK/ID"
+```
+
 ### Notification Triggers
 
 Notifications are sent when:
