@@ -71,7 +71,7 @@ def normalize_search_input(search_term):
     """Normalize serial number search input to handle human error.
 
     Handles:
-    - Extra spaces: "WM 250613 004" → "WM-250613-004"
+    - Extra spaces/tabs: "WM 250613 004" → "WM-250613-004"
     - Missing dashes: "wm250613004" → "WM-250613-004"
     - Mixed case: "wM-250613-004" → "WM-250613-004"
     - Partial input: "250613" → "250613" (unchanged, for partial matches)
@@ -82,8 +82,8 @@ def normalize_search_input(search_term):
     if not search_term:
         return ''
 
-    # Remove spaces and uppercase for pattern matching
-    cleaned = search_term.strip().replace(' ', '')
+    # Remove ALL whitespace (spaces, tabs, newlines) for pattern matching
+    cleaned = ''.join(search_term.split())
 
     # Try to match against known serial patterns
     matches = re.findall(SERIAL_PATTERN, cleaned, re.IGNORECASE)

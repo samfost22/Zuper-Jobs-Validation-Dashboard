@@ -145,8 +145,8 @@ def extract_serial_from_text(text):
     if not text:
         return []
 
-    # Normalize: remove spaces to handle typos like "WM - 250613-004"
-    normalized = str(text).replace(' ', '')
+    # Normalize: remove ALL whitespace (spaces, tabs) to handle typos like "WM - 250613-004"
+    normalized = ''.join(str(text).split())
     matches = re.findall(SERIAL_PATTERN, normalized, re.IGNORECASE)
     # Normalize each match to canonical format with dashes
     return [normalize_serial(m) for m in matches]
