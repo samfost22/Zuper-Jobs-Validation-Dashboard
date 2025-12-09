@@ -465,24 +465,36 @@ def sync_jobs_to_database(jobs, slack_webhook_url=None):
                 ))
                 flags_created += 1
 
-                # Send Slack notification for completed jobs missing NetSuite ID
+                # Send Slack notification for RECENTLY completed jobs missing NetSuite ID
+                # Only notify jobs completed in the last 48 hours to avoid flooding on first sync
                 if (webhook_url and
                     flag['flag_type'] == 'missing_netsuite_id' and
                     completed_at):
                     try:
                         from notifications.slack_notifier import send_missing_netsuite_notification
-                        line_item_names = flag.get('details', {}).get('line_items', [])
-                        send_missing_netsuite_notification(
-                            webhook_url=webhook_url,
-                            job_uid=job_uid,
-                            job_number=job_number,
-                            job_title=job_title,
-                            organization_name=organization_name,
-                            asset_name=asset_name,
-                            service_team=service_team,
-                            completed_at=completed_at,
-                            line_items=line_item_names
-                        )
+
+                        # Check if job was completed recently (within 48 hours)
+                        is_recent = False
+                        try:
+                            completed_dt = datetime.fromisoformat(completed_at.replace('Z', '+00:00').replace('+00:00', ''))
+                            hours_ago = (datetime.now() - completed_dt).total_seconds() / 3600
+                            is_recent = hours_ago <= 48
+                        except:
+                            is_recent = False  # If can't parse date, skip notification
+
+                        if is_recent:
+                            line_item_names = flag.get('details', {}).get('line_items', [])
+                            send_missing_netsuite_notification(
+                                webhook_url=webhook_url,
+                                job_uid=job_uid,
+                                job_number=job_number,
+                                job_title=job_title,
+                                organization_name=organization_name,
+                                asset_name=asset_name,
+                                service_team=service_team,
+                                completed_at=completed_at,
+                                line_items=line_item_names
+                            )
                     except Exception as notif_error:
                         # Don't fail sync if notification fails
                         print(f"  Warning: Failed to send Slack notification for {job_number}: {notif_error}")
