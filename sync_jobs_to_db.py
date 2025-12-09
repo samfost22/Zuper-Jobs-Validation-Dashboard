@@ -476,15 +476,22 @@ def sync_jobs_to_database(jobs, slack_webhook_url=None):
                         # Check if job was completed recently (within 48 hours)
                         is_recent = False
                         try:
-                            completed_dt = datetime.fromisoformat(completed_at.replace('Z', '+00:00').replace('+00:00', ''))
+                            # Handle various date formats from Zuper API
+                            date_str = completed_at.replace('Z', '').replace('+00:00', '')
+                            # Remove microseconds if present (take only first 19 chars: YYYY-MM-DDTHH:MM:SS)
+                            if 'T' in date_str and len(date_str) > 19:
+                                date_str = date_str[:19]
+                            completed_dt = datetime.fromisoformat(date_str)
                             hours_ago = (datetime.now() - completed_dt).total_seconds() / 3600
                             is_recent = hours_ago <= 48
-                        except:
-                            is_recent = False  # If can't parse date, skip notification
+                            print(f"  Job {job_number}: completed {hours_ago:.1f} hours ago, is_recent={is_recent}")
+                        except Exception as date_err:
+                            print(f"  Warning: Could not parse date '{completed_at}' for job {job_number}: {date_err}")
+                            is_recent = False
 
                         if is_recent:
                             line_item_names = flag.get('details', {}).get('line_items', [])
-                            send_missing_netsuite_notification(
+                            result = send_missing_netsuite_notification(
                                 webhook_url=webhook_url,
                                 job_uid=job_uid,
                                 job_number=job_number,
@@ -495,6 +502,10 @@ def sync_jobs_to_database(jobs, slack_webhook_url=None):
                                 completed_at=completed_at,
                                 line_items=line_item_names
                             )
+                            if result:
+                                print(f"  ✓ Slack notification sent for job {job_number}")
+                            else:
+                                print(f"  ✗ Slack notification skipped/failed for job {job_number}")
                     except Exception as notif_error:
                         # Don't fail sync if notification fails
                         print(f"  Warning: Failed to send Slack notification for {job_number}: {notif_error}")
