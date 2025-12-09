@@ -34,12 +34,13 @@ CONSUMABLE_TERMS = ['consumable', 'consumables', 'supplies', 'service']
 
 # Serial number patterns by part type
 # Add new patterns here as needed - they will automatically be included in searches
+# Note: -? makes dashes optional to handle input like "WM250613004" or "CRSM000571RW"
 SERIAL_PATTERNS = {
-    'scanner_module': r'CR-SM-\d{6}(?:-RW)?',      # 0000144: CR-SM-000571, CR-SM-000571-RW
-    'y150_component': r'CR-Y150-\d{6}-R',          # 0000508-C: CR-Y150-005032-R
-    'mpc_component': r'CR-MPC-\d{5}',              # G4000: CR-MPC-00278
-    'sm_module': r'SM-\d{6}-\d{3}',                # 0000612-B: SM-250721-002
-    'weeding_module': r'WM-\d{6}-\d{3}',           # 0000675: WM-250613-004
+    'scanner_module': r'CR-?SM-?\d{6}(?:-?RW)?',   # 0000144: CR-SM-000571, CR-SM-000571-RW
+    'y150_component': r'CR-?Y150-?\d{6}-?R',       # 0000508-C: CR-Y150-005032-R
+    'mpc_component': r'CR-?MPC-?\d{5}',            # G4000: CR-MPC-00278
+    'sm_module': r'SM-?\d{6}-?\d{3}',              # 0000612-B: SM-250721-002
+    'weeding_module': r'WM-?\d{6}-?\d{3}',         # 0000675: WM-250613-004
 }
 
 # Combined pattern for matching any serial number
