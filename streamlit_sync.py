@@ -401,7 +401,22 @@ class ZuperSync:
             # Sync this batch to database
             from sync_jobs_to_db import sync_jobs_to_database
             try:
-                sync_jobs_to_database(enriched_batch)
+                # Get Slack webhook URL from Streamlit secrets if available
+                slack_webhook_url = None
+                try:
+                    import streamlit as st
+                    slack_webhook_url = st.secrets.get("slack", {}).get("webhook_url", "")
+                    if slack_webhook_url:
+                        print(f"[Slack] Webhook URL loaded from Streamlit secrets")
+                    else:
+                        print(f"[Slack] No webhook URL in Streamlit secrets")
+                except Exception as e:
+                    print(f"[Slack] Could not read Streamlit secrets: {e}")
+                    slack_webhook_url = os.environ.get('SLACK_WEBHOOK_URL', '')
+                    if slack_webhook_url:
+                        print(f"[Slack] Webhook URL loaded from environment variable")
+
+                sync_jobs_to_database(enriched_batch, slack_webhook_url=slack_webhook_url)
                 total_synced += len(enriched_batch)
 
                 if progress_callback:
@@ -462,9 +477,17 @@ class ZuperSync:
 
             from sync_jobs_to_db import sync_jobs_to_database
 
+            # Get Slack webhook URL from Streamlit secrets if available
+            slack_webhook_url = None
+            try:
+                import streamlit as st
+                slack_webhook_url = st.secrets.get("slack", {}).get("webhook_url", "")
+            except:
+                slack_webhook_url = os.environ.get('SLACK_WEBHOOK_URL', '')
+
             # Use existing sync function with error handling
             try:
-                sync_jobs_to_database(jobs)
+                sync_jobs_to_database(jobs, slack_webhook_url=slack_webhook_url)
             except Exception as e:
                 error_msg = f"❌ Database sync error: {str(e)}"
                 if progress_callback:

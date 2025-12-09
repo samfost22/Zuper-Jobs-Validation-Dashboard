@@ -357,7 +357,7 @@ st.title("📊 Zuper Jobs Validation Dashboard")
 # Sidebar for API and Sync
 with st.sidebar:
     st.header("🔄 Data Sync")
-    
+
     # Check for API credentials
     try:
         api_key = st.secrets["zuper"]["api_key"]
@@ -367,7 +367,18 @@ with st.sidebar:
         has_credentials = False
         st.warning("⚠️ API credentials not configured")
         st.info("Add credentials to `.streamlit/secrets.toml` to enable sync")
-    
+
+    # Check for Slack webhook
+    try:
+        slack_webhook = st.secrets.get("slack", {}).get("webhook_url", "")
+        if slack_webhook:
+            st.success("🔔 Slack notifications: ON")
+        else:
+            st.info("🔕 Slack notifications: OFF")
+    except:
+        slack_webhook = ""
+        st.info("🔕 Slack notifications: OFF")
+
     if has_credentials:
         # Smart sync button - auto-detects if database is empty
         if st.button("🔄 Sync Data", type="primary", use_container_width=True, help="Automatically syncs data (smart mode)"):
