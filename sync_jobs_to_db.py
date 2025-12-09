@@ -32,7 +32,10 @@ SKIP_VALIDATION_CATEGORIES = [
 
 CONSUMABLE_TERMS = ['consumable', 'consumables', 'supplies', 'service']
 
-SERIAL_PATTERN = r'CR-SM-\d{5,6}(?:-RW)?'
+# Serial number patterns:
+# - CR-SM-XXXXX or CR-SM-XXXXX-RW: Scanner/detector serial numbers
+# - WM-YYMMDD-NNN: Weeding Module serial numbers (e.g., WM-250613-004)
+SERIAL_PATTERN = r'(?:CR-SM-\d{5,6}(?:-RW)?|WM-\d{6}-\d{3})'
 
 def init_database():
     """Initialize the SQLite database with schema"""
@@ -72,7 +75,12 @@ def load_jobs_data():
     return jobs
 
 def extract_serial_from_text(text):
-    """Extract scanner serial numbers from text using regex"""
+    """Extract serial numbers from text using regex.
+
+    Matches:
+    - CR-SM-XXXXX or CR-SM-XXXXX-RW: Scanner/detector serials
+    - WM-YYMMDD-NNN: Weeding Module serials (e.g., WM-250613-004)
+    """
     if not text:
         return []
 

@@ -140,7 +140,9 @@ get_service_team(job)
 
 ### Serial Number Extraction
 ```python
-# Regex pattern: CR-SM-XXXXX or CR-SM-XXXXX-RW
+# Regex patterns:
+# - CR-SM-XXXXX or CR-SM-XXXXX-RW: Scanner/detector serial numbers
+# - WM-YYMMDD-NNN: Weeding Module serial numbers (e.g., WM-250613-004)
 extract_serial_from_text(text)
 ```
 
