@@ -328,19 +328,22 @@ def send_missing_netsuite_notification(
         print(f"  [Notification] SKIPPED - No webhook URL configured")
         return False
 
-    # Initialize tracking table if needed
-    init_notification_tracking()
-
-    # Check if already notified (unless forced)
-    if not force and was_notification_sent(job_uid, 'missing_netsuite_id'):
-        print(f"  [Notification] SKIPPED - Already notified for this job")
-        return False  # Already notified, skip
+    # Check if already notified (unless forced) - do this BEFORE sending
+    # Use a try/except to handle database locks gracefully
+    if not force:
+        try:
+            init_notification_tracking()
+            if was_notification_sent(job_uid, 'missing_netsuite_id'):
+                print(f"  [Notification] SKIPPED - Already notified for this job")
+                return False
+        except Exception as db_err:
+            # If we can't check the database, proceed with sending anyway
+            # Better to send a duplicate than miss a notification
+            print(f"  [Notification] Warning: Could not check notification history: {db_err}")
 
     print(f"  [Notification] Sending to webhook...")
 
     # Detect webhook type and send appropriately
-    # Zapier webhooks contain "hooks.zapier.com"
-    # Slack webhooks contain "hooks.slack.com"
     is_slack_direct = "hooks.slack.com" in webhook_url
 
     if is_slack_direct:
@@ -370,13 +373,17 @@ def send_missing_netsuite_notification(
             line_items=line_items
         )
 
-    # Record the notification attempt
-    record_notification(
-        job_uid=job_uid,
-        notification_type='missing_netsuite_id',
-        success=success,
-        error_message=None if success else "Failed to send notification"
-    )
+    # Record the notification attempt - do this AFTER sending
+    # If it fails due to database lock, that's okay - the notification was sent
+    try:
+        record_notification(
+            job_uid=job_uid,
+            notification_type='missing_netsuite_id',
+            success=success,
+            error_message=None if success else "Failed to send notification"
+        )
+    except Exception as db_err:
+        print(f"  [Notification] Warning: Could not record notification (but it was sent): {db_err}")
 
     return success
 
