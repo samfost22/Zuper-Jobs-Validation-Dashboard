@@ -667,7 +667,9 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                         SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
                                j.created_at, j.asset_name, j.service_team,
                                li.item_serial as line_item_serial,
-                               cp.part_serial as checklist_serial
+                               li.item_name as line_item_name,
+                               cp.part_serial as checklist_serial,
+                               cp.checklist_question as checklist_question
                         FROM jobs j
                         LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
                             AND (li.item_serial LIKE ? OR li.item_serial LIKE ?)
@@ -679,8 +681,17 @@ with st.expander("📋 Bulk Serial Number Lookup"):
 
                     rows = cursor.fetchall()
                     for row in rows:
+                        # Determine source context (line item name or checklist question)
+                        if row['checklist_serial']:
+                            source = row['checklist_question'] or 'Checklist'
+                        elif row['line_item_serial']:
+                            source = row['line_item_name'] or 'Line Item'
+                        else:
+                            source = 'Unknown'
+
                         results.append({
                             'searched_serial': f"{raw_serials[i]} → {serial}" if raw_serials[i] != serial else serial,
+                            'source': source,
                             'job_number': row['job_number'],
                             'job_title': row['job_title'],
                             'customer': row['customer_name'],
@@ -700,8 +711,8 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                     df['Zuper Link'] = df['job_uid'].apply(lambda x: f"https://web.zuperpro.com/jobs/{x}/details")
 
                     # Reorder columns
-                    display_df = df[['searched_serial', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
-                    display_df.columns = ['Serial Searched', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
+                    display_df = df[['searched_serial', 'source', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
+                    display_df.columns = ['Serial Searched', 'Source', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
 
                     st.dataframe(display_df, use_container_width=True)
 
@@ -762,7 +773,9 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                                 SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
                                        j.created_at, j.asset_name, j.service_team,
                                        li.item_serial as line_item_serial,
-                                       cp.part_serial as checklist_serial
+                                       li.item_name as line_item_name,
+                                       cp.part_serial as checklist_serial,
+                                       cp.checklist_question as checklist_question
                                 FROM jobs j
                                 LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
                                     AND (li.item_serial LIKE ? OR li.item_serial LIKE ?)
@@ -774,8 +787,17 @@ with st.expander("📋 Bulk Serial Number Lookup"):
 
                             rows = cursor.fetchall()
                             for row in rows:
+                                # Determine source context
+                                if row['checklist_serial']:
+                                    source = row['checklist_question'] or 'Checklist'
+                                elif row['line_item_serial']:
+                                    source = row['line_item_name'] or 'Line Item'
+                                else:
+                                    source = 'Unknown'
+
                                 results.append({
                                     'searched_serial': serial,
+                                    'source': source,
                                     'job_number': row['job_number'],
                                     'job_title': row['job_title'],
                                     'customer': row['customer_name'],
@@ -788,13 +810,13 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                         conn.close()
 
                         if results:
-                            st.success(f"✅ Found {len(results)} job(s) across {len(serials)} serial numbers")
+                            st.success(f"✅ Found {len(results)} job(s) across {len(raw_serials)} serial numbers")
 
                             df = pd.DataFrame(results)
                             df['Zuper Link'] = df['job_uid'].apply(lambda x: f"https://web.zuperpro.com/jobs/{x}/details")
 
-                            display_df = df[['searched_serial', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
-                            display_df.columns = ['Serial Searched', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
+                            display_df = df[['searched_serial', 'source', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
+                            display_df.columns = ['Serial Searched', 'Source', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
 
                             st.dataframe(display_df, use_container_width=True)
 
