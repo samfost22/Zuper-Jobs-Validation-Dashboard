@@ -1,0 +1,88 @@
+name: Scheduled Job Sync
+
+on:
+  # Twice daily incremental sync (9am and 5pm UTC)
+  schedule:
+    - cron: '0 9 * * *'   # 9:00 AM UTC daily
+    - cron: '0 17 * * *'  # 5:00 PM UTC daily
+    - cron: '0 0 * * 0'   # Midnight UTC on Sundays (full sync)
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      sync_mode:
+        description: 'Sync mode'
+        required: true
+        default: 'incremental'
+        type: choice
+        options:
+          - incremental
+          - full
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Determine sync mode
+        id: sync_mode
+        run: |
+          # Check if this is the Sunday midnight run (full sync)
+          if [ "${{ github.event.schedule }}" = "0 0 * * 0" ]; then
+            echo "mode=full" >> $GITHUB_OUTPUT
+            echo "Running FULL sync (weekly refresh)"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ github.event.inputs.sync_mode }}" >> $GITHUB_OUTPUT
+            echo "Running ${{ github.event.inputs.sync_mode }} sync (manual trigger)"
+          else
+            echo "mode=incremental" >> $GITHUB_OUTPUT
+            echo "Running INCREMENTAL sync (scheduled)"
+          fi
+
+      - name: Create data directory
+        run: mkdir -p data
+
+      - name: Download existing database
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: jobs-database
+          path: data/
+
+      - name: Run sync
+        env:
+          ZUPER_API_KEY: ${{ secrets.ZUPER_API_KEY }}
+          ZUPER_BASE_URL: ${{ secrets.ZUPER_BASE_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          python scheduled_sync.py --mode ${{ steps.sync_mode.outputs.mode }}
+
+      - name: Upload database artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jobs-database
+          path: data/jobs_validation.db
+          retention-days: 30
+
+      - name: Sync summary
+        run: |
+          echo "## Sync Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ steps.sync_mode.outputs.mode }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          if [ -f "data/jobs_validation.db" ]; then
+            echo "- **Database size**: $(du -h data/jobs_validation.db | cut -f1)" >> $GITHUB_STEP_SUMMARY
+          fi
