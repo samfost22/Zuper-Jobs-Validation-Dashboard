@@ -92,12 +92,15 @@ def extract_serial_from_text(text):
     - SM-YYMMDD-NNN: SM Module (0000612-B)
     - WM-YYMMDD-NNN: Weeding Module (0000675)
 
+    Handles common input errors like extra spaces (e.g., "WM - 250613-004").
     To add new patterns, update the SERIAL_PATTERNS dictionary.
     """
     if not text:
         return []
 
-    matches = re.findall(SERIAL_PATTERN, str(text), re.IGNORECASE)
+    # Normalize: remove spaces to handle typos like "WM - 250613-004"
+    normalized = str(text).replace(' ', '')
+    matches = re.findall(SERIAL_PATTERN, normalized, re.IGNORECASE)
     return [m.upper() for m in matches]
 
 def extract_asset_from_job(job):
