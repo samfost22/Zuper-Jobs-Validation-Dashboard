@@ -242,6 +242,52 @@ def extract_checklist_parts(job):
 
     return parts
 
+
+def extract_checklist_text(job):
+    """Extract all checklist text for searching (not just serial numbers)"""
+    checklist_items = []
+
+    # Navigate through job_status -> checklist
+    job_status_list = job.get('job_status', [])
+
+    for status in job_status_list:
+        status_name = status.get('status_name', '')
+        checklist = status.get('checklist', [])
+
+        for item in checklist:
+            question = item.get('question', '')
+            answer = item.get('answer', '')
+
+            # Only store if there's an answer (skip empty checklist items)
+            if answer and str(answer).strip():
+                checklist_items.append({
+                    'checklist_question': question,
+                    'checklist_answer': str(answer).strip(),
+                    'status_name': status_name,
+                    'updated_at': item.get('updated_at', '')
+                })
+
+    return checklist_items
+
+
+def extract_job_notes(job):
+    """Extract job notes/description from job"""
+    # Try job_description first
+    notes = job.get('job_description', '')
+
+    # Also check for notes in custom fields
+    for field in job.get('custom_fields', []):
+        label = field.get('label', '').lower()
+        if 'notes' in label or 'remarks' in label or 'comment' in label:
+            value = field.get('value', '')
+            if value:
+                if notes:
+                    notes += '\n' + str(value)
+                else:
+                    notes = str(value)
+
+    return notes.strip() if notes else None
+
 def extract_custom_fields(job):
     """Extract all custom fields for storage"""
     custom_fields = []
@@ -419,8 +465,10 @@ def sync_jobs_to_database(jobs, slack_webhook_url=None):
             # Extract data
             line_items = extract_line_items(job)
             checklist_parts = extract_checklist_parts(job)
+            checklist_text = extract_checklist_text(job)
             netsuite_id = extract_netsuite_id(job)
             custom_fields = extract_custom_fields(job)
+            job_notes = extract_job_notes(job)
 
             # Insert/update job
             cursor.execute("""
@@ -429,8 +477,8 @@ def sync_jobs_to_database(jobs, slack_webhook_url=None):
                     customer_name, organization_uid, organization_name, service_team,
                     asset_name, created_at, updated_at, completed_at,
                     has_line_items, has_checklist_parts, has_netsuite_id,
-                    netsuite_sales_order_id, jira_link, slack_link, synced_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    netsuite_sales_order_id, jira_link, slack_link, job_notes, synced_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 job_uid,
                 job.get('work_order_number', '') or job.get('job_number', ''),
@@ -451,6 +499,7 @@ def sync_jobs_to_database(jobs, slack_webhook_url=None):
                 netsuite_id,
                 get_jira_link(job),
                 get_slack_link(job),
+                job_notes,
                 datetime.now().isoformat()
             ))
 
@@ -489,6 +538,22 @@ def sync_jobs_to_database(jobs, slack_webhook_url=None):
                     part['status_name'],
                     part['position'],
                     part['updated_at']
+                ))
+
+            # Insert checklist text (full searchable text)
+            cursor.execute("DELETE FROM job_checklist_text WHERE job_uid = ?", (job_uid,))
+            for item in checklist_text:
+                cursor.execute("""
+                    INSERT INTO job_checklist_text (
+                        job_uid, checklist_question, checklist_answer,
+                        status_name, updated_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                """, (
+                    job_uid,
+                    item['checklist_question'],
+                    item['checklist_answer'],
+                    item['status_name'],
+                    item['updated_at']
                 ))
 
             # Insert custom fields

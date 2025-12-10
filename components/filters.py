@@ -31,9 +31,10 @@ def render_search_inputs() -> None:
 
     with col2:
         part = st.text_input(
-            "Part Name/Code",
-            placeholder="Search parts...",
-            key="part_input"
+            "Part # / Notes / Checklist",
+            placeholder="Search parts, notes, checklists...",
+            key="part_input",
+            help="Searches line items, job notes, and checklist answers"
         )
         if part != st.session_state.part_search:
             st.session_state.part_search = part

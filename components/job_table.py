@@ -3,16 +3,18 @@ Job table display component for the dashboard.
 """
 
 import streamlit as st
-from typing import List, Dict, Callable
+from typing import List, Dict, Callable, Optional
 
 from config import ZUPER_JOB_URL_TEMPLATE, JOBS_PER_PAGE
+from database.queries import get_part_match_details
 
 
 def render_job_row(
     job: Dict,
     idx: int,
     total: int,
-    on_review: Callable[[str], int]
+    on_review: Callable[[str], int],
+    part_search: Optional[str] = None
 ) -> None:
     """
     Render a single job row.
@@ -22,6 +24,7 @@ def render_job_row(
         idx: Index of this job in the list.
         total: Total number of jobs being displayed.
         on_review: Callback function when review button is clicked.
+        part_search: Optional part search term to show match details.
     """
     completed_date = job.get('completed_at') or job.get('created_at')
     zuper_url = ZUPER_JOB_URL_TEMPLATE.format(job_uid=job['job_uid'])
@@ -41,6 +44,19 @@ def render_job_row(
                 f"{job.get('service_team') or '-'} | "
                 f"Completed: {completed_date[:10] if completed_date else '-'}"
             )
+
+            # Show match details if part search is active
+            if part_search:
+                matches = get_part_match_details(job['job_uid'], part_search)
+                match_info = []
+                if matches['line_items']:
+                    match_info.append(f"**Line Item:** {matches['line_items'][0]}")
+                if matches['notes']:
+                    match_info.append(f"**Notes:** {matches['notes'][0]}")
+                if matches['checklists']:
+                    match_info.append(f"**Checklist:** {matches['checklists'][0]}")
+                if match_info:
+                    st.markdown(" | ".join(match_info[:2]), help="Where the search term was found")
 
         with col2:
             # Status
@@ -77,7 +93,8 @@ def render_job_row(
 
 def render_job_table(
     jobs: List[Dict],
-    on_review: Callable[[str], int]
+    on_review: Callable[[str], int],
+    part_search: Optional[str] = None
 ) -> None:
     """
     Render the job table.
@@ -85,13 +102,14 @@ def render_job_table(
     Args:
         jobs: List of job dictionaries.
         on_review: Callback function when review button is clicked.
+        part_search: Optional part search term to show match details.
     """
     if not jobs:
         st.info("No jobs found matching the current filters.")
         return
 
     for idx, job in enumerate(jobs):
-        render_job_row(job, idx, len(jobs), on_review)
+        render_job_row(job, idx, len(jobs), on_review, part_search)
 
 
 def render_pagination(total_count: int, limit: int = JOBS_PER_PAGE) -> None:

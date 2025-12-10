@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     netsuite_sales_order_id TEXT,
     jira_link TEXT,
     slack_link TEXT,
+    job_notes TEXT,
     synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uid) REFERENCES organizations(organization_uid)
 );
@@ -48,6 +49,17 @@ CREATE TABLE IF NOT EXISTS job_checklist_parts (
     part_description TEXT,
     status_name TEXT,
     position TEXT,
+    updated_at TIMESTAMP,
+    FOREIGN KEY (job_uid) REFERENCES jobs(job_uid)
+);
+
+-- Job checklist text (full searchable text from all checklist answers)
+CREATE TABLE IF NOT EXISTS job_checklist_text (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_uid TEXT NOT NULL,
+    checklist_question TEXT,
+    checklist_answer TEXT,
+    status_name TEXT,
     updated_at TIMESTAMP,
     FOREIGN KEY (job_uid) REFERENCES jobs(job_uid)
 );
@@ -109,6 +121,7 @@ CREATE INDEX IF NOT EXISTS idx_line_items_job ON job_line_items(job_uid);
 CREATE INDEX IF NOT EXISTS idx_line_items_serial ON job_line_items(item_serial);
 CREATE INDEX IF NOT EXISTS idx_checklist_job ON job_checklist_parts(job_uid);
 CREATE INDEX IF NOT EXISTS idx_checklist_serial ON job_checklist_parts(part_serial);
+CREATE INDEX IF NOT EXISTS idx_checklist_text_job ON job_checklist_text(job_uid);
 CREATE INDEX IF NOT EXISTS idx_flags_job ON validation_flags(job_uid);
 CREATE INDEX IF NOT EXISTS idx_flags_type ON validation_flags(flag_type, is_resolved);
 CREATE INDEX IF NOT EXISTS idx_organizations_netsuite ON organizations(netsuite_customer_id);

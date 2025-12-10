@@ -123,11 +123,16 @@ def _build_job_filters(
         clauses.append("j.asset_name = ?")
         params.append(asset)
 
-    # Part search - requires join
+    # Part search - search line items, job notes, and checklist text
     if part_search:
-        joins.append("JOIN job_line_items li ON j.job_uid = li.job_uid")
-        extra_where.append("(li.item_name LIKE ? OR li.item_code LIKE ?)")
-        params.extend([f"%{part_search}%", f"%{part_search}%"])
+        joins.append("LEFT JOIN job_line_items li ON j.job_uid = li.job_uid")
+        joins.append("LEFT JOIN job_checklist_text ct ON j.job_uid = ct.job_uid")
+        extra_where.append("""(
+            li.item_name LIKE ? OR li.item_code LIKE ?
+            OR j.job_notes LIKE ?
+            OR ct.checklist_answer LIKE ?
+        )""")
+        params.extend([f"%{part_search}%", f"%{part_search}%", f"%{part_search}%", f"%{part_search}%"])
 
     # Serial search - requires join to both tables
     if serial_search:
@@ -136,8 +141,8 @@ def _build_job_filters(
         joins.append("LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid")
 
         if part_search:
-            # Combine with part search
-            extra_where[-1] = "(li.item_name LIKE ? OR li.item_code LIKE ? OR li.item_serial LIKE ? OR cp.part_serial LIKE ?)"
+            # Add serial search as separate condition (AND with part search)
+            extra_where.append("(li.item_serial LIKE ? OR cp.part_serial LIKE ?)")
             params.extend([f"%{serial_search}%", f"%{serial_search}%"])
         else:
             extra_where.append("(li2.item_serial LIKE ? OR cp.part_serial LIKE ?)")
@@ -418,6 +423,92 @@ def search_serials_bulk(serials: List[str]) -> List[Dict]:
     except Exception as e:
         logger.error(f"Error searching serials: {e}")
         return []
+
+
+def get_part_match_details(job_uid: str, search_term: str) -> Dict[str, List[str]]:
+    """
+    Get details about where a part search term was found in a job.
+
+    Args:
+        job_uid: The job UID to check.
+        search_term: The part search term.
+
+    Returns:
+        Dictionary with match sources: {'line_items': [...], 'notes': [...], 'checklists': [...]}
+    """
+    matches = {'line_items': [], 'notes': [], 'checklists': []}
+
+    if not search_term:
+        return matches
+
+    try:
+        with db_session() as conn:
+            cursor = conn.cursor()
+
+            # Check line items
+            cursor.execute("""
+                SELECT item_name, item_code
+                FROM job_line_items
+                WHERE job_uid = ?
+                AND (item_name LIKE ? OR item_code LIKE ?)
+            """, (job_uid, f"%{search_term}%", f"%{search_term}%"))
+
+            for row in cursor.fetchall():
+                name = row['item_name'] or row['item_code']
+                if name:
+                    matches['line_items'].append(name)
+
+            # Check job notes
+            cursor.execute("""
+                SELECT job_notes
+                FROM jobs
+                WHERE job_uid = ?
+                AND job_notes LIKE ?
+            """, (job_uid, f"%{search_term}%"))
+
+            result = cursor.fetchone()
+            if result and result['job_notes']:
+                # Extract snippet around the match
+                notes = result['job_notes']
+                idx = notes.lower().find(search_term.lower())
+                if idx >= 0:
+                    start = max(0, idx - 20)
+                    end = min(len(notes), idx + len(search_term) + 20)
+                    snippet = notes[start:end]
+                    if start > 0:
+                        snippet = '...' + snippet
+                    if end < len(notes):
+                        snippet = snippet + '...'
+                    matches['notes'].append(snippet)
+
+            # Check checklist text
+            cursor.execute("""
+                SELECT checklist_question, checklist_answer
+                FROM job_checklist_text
+                WHERE job_uid = ?
+                AND checklist_answer LIKE ?
+            """, (job_uid, f"%{search_term}%"))
+
+            for row in cursor.fetchall():
+                question = row['checklist_question'] or 'Checklist'
+                answer = row['checklist_answer'] or ''
+                # Extract snippet
+                idx = answer.lower().find(search_term.lower())
+                if idx >= 0:
+                    start = max(0, idx - 15)
+                    end = min(len(answer), idx + len(search_term) + 15)
+                    snippet = answer[start:end]
+                    if start > 0:
+                        snippet = '...' + snippet
+                    if end < len(answer):
+                        snippet = snippet + '...'
+                    matches['checklists'].append(f"{question[:30]}: {snippet}")
+
+        return matches
+
+    except Exception as e:
+        logger.error(f"Error getting part match details: {e}")
+        return matches
 
 
 def get_last_sync_time() -> Optional[str]:
