@@ -9,7 +9,9 @@ import pandas as pd
 import json
 from datetime import datetime
 from pathlib import Path
+import re
 from streamlit_sync import ZuperSync, test_api_connection
+from sync_jobs_to_db import normalize_serial, SERIAL_PATTERN
 
 # Use persistent data directory
 DATA_DIR = Path(__file__).parent / 'data'
@@ -63,6 +65,35 @@ def get_db_connection():
     conn = sqlite3.connect(DB_FILE, timeout=30.0)  # 30 second timeout
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def normalize_search_input(search_term):
+    """Normalize serial number search input to handle human error.
+
+    Handles:
+    - Extra spaces/tabs: "WM 250613 004" → "WM-250613-004"
+    - Missing dashes: "wm250613004" → "WM-250613-004"
+    - Mixed case: "wM-250613-004" → "WM-250613-004"
+    - Partial input: "250613" → "250613" (unchanged, for partial matches)
+
+    Returns normalized serial if it matches a known pattern, otherwise
+    returns cleaned input for partial matching.
+    """
+    if not search_term:
+        return ''
+
+    # Remove ALL whitespace (spaces, tabs, newlines) for pattern matching
+    cleaned = ''.join(search_term.split())
+
+    # Try to match against known serial patterns
+    matches = re.findall(SERIAL_PATTERN, cleaned, re.IGNORECASE)
+    if matches:
+        # Found a valid serial pattern - normalize it
+        return normalize_serial(matches[0])
+
+    # No pattern match - return cleaned input for partial search
+    # This allows searching by partial serial like "250613" or "000571"
+    return cleaned.upper()
 
 
 @st.cache_data(ttl=60)  # Cache for 60 seconds
@@ -552,7 +583,8 @@ with col2:
 with col3:
     serial_input = st.text_input("🏷️ Serial Number", placeholder="Enter serial number...", key="serial_input")
     if serial_input:
-        st.session_state.serial_search = serial_input
+        # Normalize search input to handle human error (spaces, missing dashes, case)
+        st.session_state.serial_search = normalize_search_input(serial_input)
         st.session_state.current_page = 1  # Reset to page 1 when searching
     else:
         st.session_state.serial_search = ''
@@ -631,21 +663,24 @@ with st.expander("📋 Bulk Serial Number Lookup"):
 
         if st.button("🔍 Search Serial Numbers", type="primary"):
             if bulk_serials_text:
-                # Parse serial numbers from text
-                serials = [s.strip() for s in bulk_serials_text.split('\n') if s.strip()]
+                # Parse and normalize serial numbers from text
+                raw_serials = [s.strip() for s in bulk_serials_text.split('\n') if s.strip()]
+                serials = [normalize_search_input(s) for s in raw_serials]
 
                 # Search for each serial
                 conn = get_db_connection()
                 cursor = conn.cursor()
 
                 results = []
-                for serial in serials:
+                for i, serial in enumerate(serials):
                     # Search in both line items and checklist parts
                     cursor.execute("""
                         SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
                                j.created_at, j.asset_name, j.service_team,
                                li.item_serial as line_item_serial,
-                               cp.part_serial as checklist_serial
+                               li.item_name as line_item_name,
+                               cp.part_serial as checklist_serial,
+                               cp.checklist_question as checklist_question
                         FROM jobs j
                         LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
                             AND (li.item_serial LIKE ? OR li.item_serial LIKE ?)
@@ -657,8 +692,17 @@ with st.expander("📋 Bulk Serial Number Lookup"):
 
                     rows = cursor.fetchall()
                     for row in rows:
+                        # Determine source context (line item name or checklist question)
+                        if row['checklist_serial']:
+                            source = row['checklist_question'] or 'Checklist'
+                        elif row['line_item_serial']:
+                            source = row['line_item_name'] or 'Line Item'
+                        else:
+                            source = 'Unknown'
+
                         results.append({
-                            'searched_serial': serial,
+                            'searched_serial': f"{raw_serials[i]} → {serial}" if raw_serials[i] != serial else serial,
+                            'source': source,
                             'job_number': row['job_number'],
                             'job_title': row['job_title'],
                             'customer': row['customer_name'],
@@ -678,8 +722,8 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                     df['Zuper Link'] = df['job_uid'].apply(lambda x: f"https://web.zuperpro.com/jobs/{x}/details")
 
                     # Reorder columns
-                    display_df = df[['searched_serial', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
-                    display_df.columns = ['Serial Searched', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
+                    display_df = df[['searched_serial', 'source', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
+                    display_df.columns = ['Serial Searched', 'Source', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
 
                     st.dataframe(display_df, use_container_width=True)
 
@@ -719,25 +763,30 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                         break
 
                 if serial_column:
-                    serials = csv_data[serial_column].dropna().astype(str).tolist()
-                    st.info(f"📊 Found {len(serials)} serial numbers in column '{serial_column}'")
+                    raw_serials = csv_data[serial_column].dropna().astype(str).tolist()
+                    st.info(f"📊 Found {len(raw_serials)} serial numbers in column '{serial_column}'")
 
                     if st.button("🔍 Search from CSV", type="primary"):
-                        # Same search logic as tab1
+                        # Normalize serials and search
                         conn = get_db_connection()
                         cursor = conn.cursor()
 
                         results = []
-                        for serial in serials:
-                            serial = serial.strip()
-                            if not serial:
+                        for raw_serial in raw_serials:
+                            raw_serial = raw_serial.strip()
+                            if not raw_serial:
                                 continue
+
+                            # Normalize the serial to handle human error
+                            serial = normalize_search_input(raw_serial)
 
                             cursor.execute("""
                                 SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
                                        j.created_at, j.asset_name, j.service_team,
                                        li.item_serial as line_item_serial,
-                                       cp.part_serial as checklist_serial
+                                       li.item_name as line_item_name,
+                                       cp.part_serial as checklist_serial,
+                                       cp.checklist_question as checklist_question
                                 FROM jobs j
                                 LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
                                     AND (li.item_serial LIKE ? OR li.item_serial LIKE ?)
@@ -749,8 +798,17 @@ with st.expander("📋 Bulk Serial Number Lookup"):
 
                             rows = cursor.fetchall()
                             for row in rows:
+                                # Determine source context
+                                if row['checklist_serial']:
+                                    source = row['checklist_question'] or 'Checklist'
+                                elif row['line_item_serial']:
+                                    source = row['line_item_name'] or 'Line Item'
+                                else:
+                                    source = 'Unknown'
+
                                 results.append({
                                     'searched_serial': serial,
+                                    'source': source,
                                     'job_number': row['job_number'],
                                     'job_title': row['job_title'],
                                     'customer': row['customer_name'],
@@ -763,13 +821,13 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                         conn.close()
 
                         if results:
-                            st.success(f"✅ Found {len(results)} job(s) across {len(serials)} serial numbers")
+                            st.success(f"✅ Found {len(results)} job(s) across {len(raw_serials)} serial numbers")
 
                             df = pd.DataFrame(results)
                             df['Zuper Link'] = df['job_uid'].apply(lambda x: f"https://web.zuperpro.com/jobs/{x}/details")
 
-                            display_df = df[['searched_serial', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
-                            display_df.columns = ['Serial Searched', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
+                            display_df = df[['searched_serial', 'source', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
+                            display_df.columns = ['Serial Searched', 'Source', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
 
                             st.dataframe(display_df, use_container_width=True)
 
