@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 from streamlit_sync import ZuperSync, test_api_connection
 from sync_jobs_to_db import normalize_serial, SERIAL_PATTERN
+from github_artifact import ensure_database_from_artifact
 
 # Use persistent data directory
 DATA_DIR = Path(__file__).parent / 'data'
@@ -52,11 +53,14 @@ if 'asset_filter' not in st.session_state:
 
 
 def ensure_database_exists():
-    """Initialize database if it doesn't exist"""
+    """Initialize database if it doesn't exist, downloading from GitHub artifact if available"""
     import os
     if not os.path.exists(DB_FILE):
-        from streamlit_sync import init_database
-        init_database()
+        # Try to download from GitHub artifact first (for Streamlit Cloud)
+        if not ensure_database_from_artifact(DB_FILE):
+            # Fall back to creating empty database
+            from streamlit_sync import init_database
+            init_database()
 
 
 def get_db_connection():
