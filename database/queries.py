@@ -13,6 +13,20 @@ from config import JOBS_DB_FILE, JOBS_PER_PAGE
 
 logger = logging.getLogger(__name__)
 
+# Initialize database once at module load time (not on every query)
+# This avoids redundant file existence checks on every database operation
+_db_initialized = False
+
+def _ensure_db_ready():
+    """Ensure database is initialized (called once per process)."""
+    global _db_initialized
+    if not _db_initialized:
+        ensure_database_exists()
+        _db_initialized = True
+
+# Initialize on module import
+_ensure_db_ready()
+
 
 def get_metrics() -> Dict[str, int]:
     """
@@ -30,7 +44,6 @@ def get_metrics() -> Dict[str, int]:
     }
 
     try:
-        ensure_database_exists()
         with db_session() as conn:
             cursor = conn.cursor()
 
@@ -185,7 +198,6 @@ def get_jobs(
         Tuple of (jobs list, total count)
     """
     try:
-        ensure_database_exists()
         offset = (page - 1) * limit
 
         # Build filter components
@@ -268,7 +280,6 @@ def get_filter_options() -> Tuple[List[str], List[str]]:
         Tuple of (organizations list, teams list)
     """
     try:
-        ensure_database_exists()
         with db_session() as conn:
             cursor = conn.cursor()
 
@@ -303,7 +314,6 @@ def get_assets_with_counts() -> List[Tuple[str, str]]:
         List of (asset_name, display_label) tuples.
     """
     try:
-        ensure_database_exists()
         with db_session() as conn:
             cursor = conn.cursor()
 
@@ -375,7 +385,6 @@ def search_serials_bulk(serials: List[str]) -> List[Dict]:
         List of matching job records with serial info.
     """
     try:
-        ensure_database_exists()
         results = []
 
         with db_session() as conn:
@@ -428,7 +437,6 @@ def get_last_sync_time() -> Optional[str]:
         ISO format timestamp string or None.
     """
     try:
-        ensure_database_exists()
         with db_session() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -454,7 +462,6 @@ def get_job_count() -> int:
         Number of jobs, or 0 on error.
     """
     try:
-        ensure_database_exists()
         with db_session() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM jobs")

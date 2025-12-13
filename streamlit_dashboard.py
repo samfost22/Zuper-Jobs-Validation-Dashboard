@@ -98,49 +98,39 @@ def normalize_search_input(search_term):
 
 @st.cache_data(ttl=60)  # Cache for 60 seconds
 def get_metrics():
-    """Get dashboard metrics"""
+    """Get dashboard metrics with a single optimized query"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Total jobs
-        cursor.execute("SELECT COUNT(*) as total FROM jobs")
-        total_jobs = cursor.fetchone()['total']
-
-        # Jobs with parts replaced but no line items
+        # Combined query: get all metrics in one database round-trip
         cursor.execute("""
-            SELECT COUNT(DISTINCT job_uid) as count
-            FROM validation_flags
-            WHERE flag_type = 'parts_replaced_no_line_items'
-            AND is_resolved = 0
-        """)
-        parts_no_items_count = cursor.fetchone()['count']
-
-        # Jobs with line items but missing NetSuite ID
-        cursor.execute("""
-            SELECT COUNT(DISTINCT job_uid) as count
-            FROM validation_flags
-            WHERE flag_type = 'missing_netsuite_id'
-            AND is_resolved = 0
-        """)
-        missing_netsuite_count = cursor.fetchone()['count']
-
-        # Jobs passing all validations
-        cursor.execute("""
-            SELECT COUNT(*) as count
+            SELECT
+                COUNT(DISTINCT j.job_uid) as total_jobs,
+                COUNT(DISTINCT CASE
+                    WHEN vf.flag_type = 'parts_replaced_no_line_items' AND vf.is_resolved = 0
+                    THEN vf.job_uid
+                END) as parts_no_items_count,
+                COUNT(DISTINCT CASE
+                    WHEN vf.flag_type = 'missing_netsuite_id' AND vf.is_resolved = 0
+                    THEN vf.job_uid
+                END) as missing_netsuite_count,
+                COUNT(DISTINCT CASE
+                    WHEN vf.id IS NULL
+                    THEN j.job_uid
+                END) as passing_count
             FROM jobs j
             LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
-            WHERE vf.id IS NULL
         """)
-        passing_count = cursor.fetchone()['count']
 
+        row = cursor.fetchone()
         conn.close()
 
         return {
-            'total_jobs': total_jobs,
-            'parts_no_items_count': parts_no_items_count,
-            'missing_netsuite_count': missing_netsuite_count,
-            'passing_count': passing_count
+            'total_jobs': row['total_jobs'] or 0,
+            'parts_no_items_count': row['parts_no_items_count'] or 0,
+            'missing_netsuite_count': row['missing_netsuite_count'] or 0,
+            'passing_count': row['passing_count'] or 0
         }
     except Exception as e:
         # Return zeros if database is empty or has issues
@@ -154,7 +144,7 @@ def get_metrics():
 
 @st.cache_data(ttl=60)  # Cache for 60 seconds
 def get_jobs(filter_type='all', page=1, month='', organization='', team='', start_date=None, end_date=None, job_number='', part_search='', serial_search='', asset='', limit=50):
-    """Get jobs list with filtering and pagination"""
+    """Get jobs list with filtering and pagination using parameterized queries"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -165,52 +155,68 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
         return [], 0
 
     try:
-        # Build filter clauses
+        # Build filter clauses with parameterized queries (prevents SQL injection)
         filter_clauses = []
+        params = []
 
         # Job number search (exact or partial match)
         if job_number:
-            filter_clauses.append(f"j.job_number LIKE '%{job_number}%'")
+            filter_clauses.append("j.job_number LIKE ?")
+            params.append(f"%{job_number}%")
 
         # Date range filter (takes precedence over month filter)
         if start_date and end_date:
-            filter_clauses.append(f"(date(COALESCE(j.completed_at, j.created_at)) BETWEEN '{start_date}' AND '{end_date}')")
+            filter_clauses.append("date(COALESCE(j.completed_at, j.created_at)) BETWEEN ? AND ?")
+            params.extend([start_date, end_date])
         elif month:
-            filter_clauses.append(f"(strftime('%Y-%m', COALESCE(j.completed_at, j.created_at)) = '{month}')")
+            filter_clauses.append("strftime('%Y-%m', COALESCE(j.completed_at, j.created_at)) = ?")
+            params.append(month)
 
         if organization:
-            filter_clauses.append(f"j.organization_name LIKE '%{organization}%'")
+            filter_clauses.append("j.organization_name LIKE ?")
+            params.append(f"%{organization}%")
 
         if team:
-            filter_clauses.append(f"j.service_team LIKE '%{team}%'")
+            filter_clauses.append("j.service_team LIKE ?")
+            params.append(f"%{team}%")
 
         if asset:
-            filter_clauses.append(f"j.asset_name = '{asset}'")
+            filter_clauses.append("j.asset_name = ?")
+            params.append(asset)
 
         date_clause = ("AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
 
         # Add part search join if needed
         part_join = ""
         part_where = ""
+        part_params = []
         if part_search:
             part_join = "JOIN job_line_items li ON j.job_uid = li.job_uid"
-            part_where = f"AND (li.item_name LIKE '%{part_search}%' OR li.item_code LIKE '%{part_search}%')"
+            part_where = "AND (li.item_name LIKE ? OR li.item_code LIKE ?)"
+            part_params.extend([f"%{part_search}%", f"%{part_search}%"])
 
         # Add serial number search join if needed
         serial_join = ""
         serial_where = ""
+        serial_params = []
         if serial_search:
             # Search in both line items and checklist parts
             serial_join = """
             LEFT JOIN job_line_items li2 ON j.job_uid = li2.job_uid
             LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
             """
-            serial_where = f"AND (li2.item_serial LIKE '%{serial_search}%' OR cp.part_serial LIKE '%{serial_search}%')"
+            serial_where = "AND (li2.item_serial LIKE ? OR cp.part_serial LIKE ?)"
+            serial_params.extend([f"%{serial_search}%", f"%{serial_search}%"])
             # If both part and serial search, combine the joins
             if part_search:
                 serial_join = "LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid"
-                part_where = f"AND (li.item_name LIKE '%{part_search}%' OR li.item_code LIKE '%{part_search}%' OR li.item_serial LIKE '%{serial_search}%' OR cp.part_serial LIKE '%{serial_search}%')"
+                part_where = "AND (li.item_name LIKE ? OR li.item_code LIKE ? OR li.item_serial LIKE ? OR cp.part_serial LIKE ?)"
+                part_params = [f"%{part_search}%", f"%{part_search}%", f"%{serial_search}%", f"%{serial_search}%"]
                 serial_where = ""
+                serial_params = []
+
+        # Combine all parameters in order
+        all_params = params + part_params + serial_params
 
         # Build query based on filter
         if filter_type == 'parts_no_items':
@@ -272,21 +278,45 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
                 LIMIT ? OFFSET ?
             """
 
-        cursor.execute(query, (limit, offset))
+        # Execute with parameterized values
+        query_params = all_params + [limit, offset]
+        cursor.execute(query, query_params)
         jobs = [dict(row) for row in cursor.fetchall()]
 
-        # Get total count (with part/serial search if applicable)
+        # Get total count using same parameterized approach
         if filter_type == 'parts_no_items':
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid {part_join} {serial_join} WHERE vf.flag_type = 'parts_replaced_no_line_items' AND vf.is_resolved = 0 {date_clause} {part_where} {serial_where}"
+            count_query = f"""
+                SELECT COUNT(DISTINCT j.job_uid) FROM jobs j
+                JOIN validation_flags vf ON j.job_uid = vf.job_uid
+                {part_join} {serial_join}
+                WHERE vf.flag_type = 'parts_replaced_no_line_items' AND vf.is_resolved = 0
+                {date_clause} {part_where} {serial_where}
+            """
         elif filter_type == 'missing_netsuite':
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid {part_join} {serial_join} WHERE vf.flag_type = 'missing_netsuite_id' AND vf.is_resolved = 0 {date_clause} {part_where} {serial_where}"
+            count_query = f"""
+                SELECT COUNT(DISTINCT j.job_uid) FROM jobs j
+                JOIN validation_flags vf ON j.job_uid = vf.job_uid
+                {part_join} {serial_join}
+                WHERE vf.flag_type = 'missing_netsuite_id' AND vf.is_resolved = 0
+                {date_clause} {part_where} {serial_where}
+            """
         elif filter_type == 'passing':
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0 {part_join} {serial_join} WHERE vf.id IS NULL {date_clause} {part_where} {serial_where}"
+            count_query = f"""
+                SELECT COUNT(DISTINCT j.job_uid) FROM jobs j
+                LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
+                {part_join} {serial_join}
+                WHERE vf.id IS NULL
+                {date_clause} {part_where} {serial_where}
+            """
         else:
-            count_where = f"WHERE {date_clause[4:]}" if date_clause else ""
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j {part_join} {serial_join} {count_where} {part_where if part_search or serial_search else ''} {serial_where if serial_search and not part_search else ''}"
+            count_query = f"""
+                SELECT COUNT(DISTINCT j.job_uid) FROM jobs j
+                {part_join} {serial_join}
+                WHERE 1=1
+                {date_clause} {part_where} {serial_where}
+            """
 
-        cursor.execute(count_query)
+        cursor.execute(count_query, all_params)
         total_count = cursor.fetchone()[0]
 
         conn.close()
@@ -561,49 +591,55 @@ with col4:
 # Filters
 organizations, teams = get_filter_options()
 
-# First row: Job number search, Part search, Serial search, and date range
-col1, col2, col3, col4, col5 = st.columns(5)
+# Text search filters wrapped in a form to prevent re-renders on every keystroke
+with st.form(key="search_filters_form"):
+    # First row: Job number search, Part search, Serial search, and date range
+    col1, col2, col3, col4, col5 = st.columns(5)
 
-with col1:
-    job_number_input = st.text_input("🔍 Job Number", placeholder="Enter job number...", key="job_number_input")
-    if job_number_input:
-        st.session_state.job_number_search = job_number_input
+    with col1:
+        job_number_input = st.text_input(
+            "🔍 Job Number",
+            value=st.session_state.job_number_search,
+            placeholder="Enter job number...",
+            key="job_number_input"
+        )
+
+    with col2:
+        part_input = st.text_input(
+            "🔧 Part Name/Code",
+            value=st.session_state.part_search,
+            placeholder="Enter part name or code...",
+            key="part_input"
+        )
+
+    with col3:
+        serial_input = st.text_input(
+            "🏷️ Serial Number",
+            value=st.session_state.serial_search,
+            placeholder="Enter serial number...",
+            key="serial_input"
+        )
+
+    with col4:
+        start_date_input = st.date_input("Start Date", value=None, key="start_date_input")
+
+    with col5:
+        end_date_input = st.date_input("End Date", value=None, key="end_date_input")
+
+    # Submit button for text searches
+    search_submitted = st.form_submit_button("🔍 Apply Search Filters", use_container_width=True)
+
+    if search_submitted:
+        # Update session state only when form is submitted
+        st.session_state.job_number_search = job_number_input if job_number_input else ''
+        st.session_state.part_search = part_input if part_input else ''
+        st.session_state.serial_search = normalize_search_input(serial_input) if serial_input else ''
+        st.session_state.start_date = start_date_input.isoformat() if start_date_input else None
+        st.session_state.end_date = end_date_input.isoformat() if end_date_input else None
         st.session_state.current_page = 1  # Reset to page 1 when searching
-    else:
-        st.session_state.job_number_search = ''
+        st.rerun()
 
-with col2:
-    part_input = st.text_input("🔧 Part Name/Code", placeholder="Enter part name or code...", key="part_input")
-    if part_input:
-        st.session_state.part_search = part_input
-        st.session_state.current_page = 1  # Reset to page 1 when searching
-    else:
-        st.session_state.part_search = ''
-
-with col3:
-    serial_input = st.text_input("🏷️ Serial Number", placeholder="Enter serial number...", key="serial_input")
-    if serial_input:
-        # Normalize search input to handle human error (spaces, missing dashes, case)
-        st.session_state.serial_search = normalize_search_input(serial_input)
-        st.session_state.current_page = 1  # Reset to page 1 when searching
-    else:
-        st.session_state.serial_search = ''
-
-with col4:
-    start_date_input = st.date_input("Start Date", value=None, key="start_date_input")
-    if start_date_input:
-        st.session_state.start_date = start_date_input.isoformat()
-    else:
-        st.session_state.start_date = None
-
-with col5:
-    end_date_input = st.date_input("End Date", value=None, key="end_date_input")
-    if end_date_input:
-        st.session_state.end_date = end_date_input.isoformat()
-    else:
-        st.session_state.end_date = None
-
-# Second row: Month, Organization, Service Team, Asset
+# Second row: Dropdown filters (these don't need form wrapper - they're discrete selections)
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
