@@ -96,6 +96,97 @@ def normalize_search_input(search_term):
     return cleaned.upper()
 
 
+def search_serials_batch(serial_pairs, cursor):
+    """
+    Search for multiple serial numbers in a single batched query.
+
+    Args:
+        serial_pairs: List of (raw_serial, normalized_serial) tuples
+        cursor: Database cursor
+
+    Returns:
+        List of result dicts with 'searched_serial' properly attributed
+    """
+    if not serial_pairs:
+        return []
+
+    # Get unique normalized serials for the query
+    unique_serials = list(set(normalized for _, normalized in serial_pairs if normalized))
+
+    if not unique_serials:
+        return []
+
+    # Build a single query with OR conditions for all serials
+    # This replaces N queries with 1 query
+    or_conditions = []
+    params = []
+    for serial in unique_serials:
+        or_conditions.append("(li.item_serial LIKE ? OR cp.part_serial LIKE ?)")
+        params.extend([f'%{serial}%', f'%{serial}%'])
+
+    query = f"""
+        SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
+               j.created_at, j.asset_name, j.service_team,
+               li.item_serial as line_item_serial,
+               li.item_name as line_item_name,
+               cp.part_serial as checklist_serial,
+               cp.checklist_question as checklist_question
+        FROM jobs j
+        LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
+        LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
+        WHERE ({' OR '.join(or_conditions)})
+        ORDER BY j.created_at DESC
+    """
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+
+    # Build a mapping from normalized serial to raw serial for display
+    serial_display_map = {}
+    for raw, normalized in serial_pairs:
+        if normalized:
+            if normalized not in serial_display_map:
+                serial_display_map[normalized] = raw if raw != normalized else normalized
+
+    results = []
+    for row in rows:
+        line_serial = row['line_item_serial'] or ''
+        check_serial = row['checklist_serial'] or ''
+
+        # Determine which searched serial(s) matched this row
+        matched_serials = set()
+        for raw, normalized in serial_pairs:
+            if not normalized:
+                continue
+            if normalized.upper() in line_serial.upper() or normalized.upper() in check_serial.upper():
+                display = f"{raw} → {normalized}" if raw != normalized else normalized
+                matched_serials.add(display)
+
+        # Determine source context
+        if check_serial:
+            source = row['checklist_question'] or 'Checklist'
+        elif line_serial:
+            source = row['line_item_name'] or 'Line Item'
+        else:
+            source = 'Unknown'
+
+        # Create a result entry for each matched serial
+        for searched in matched_serials:
+            results.append({
+                'searched_serial': searched,
+                'source': source,
+                'job_number': row['job_number'],
+                'job_title': row['job_title'],
+                'customer': row['customer_name'],
+                'asset': row['asset_name'] or 'N/A',
+                'service_team': row['service_team'] or 'N/A',
+                'created_at': row['created_at'],
+                'job_uid': row['job_uid']
+            })
+
+    return results
+
+
 @st.cache_data(ttl=60)  # Cache for 60 seconds
 def get_metrics():
     """Get dashboard metrics with a single optimized query"""
@@ -701,57 +792,16 @@ with st.expander("📋 Bulk Serial Number Lookup"):
             if bulk_serials_text:
                 # Parse and normalize serial numbers from text
                 raw_serials = [s.strip() for s in bulk_serials_text.split('\n') if s.strip()]
-                serials = [normalize_search_input(s) for s in raw_serials]
+                serial_pairs = [(raw, normalize_search_input(raw)) for raw in raw_serials]
 
-                # Search for each serial
+                # Batched search - single query instead of N queries
                 conn = get_db_connection()
                 cursor = conn.cursor()
-
-                results = []
-                for i, serial in enumerate(serials):
-                    # Search in both line items and checklist parts
-                    cursor.execute("""
-                        SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
-                               j.created_at, j.asset_name, j.service_team,
-                               li.item_serial as line_item_serial,
-                               li.item_name as line_item_name,
-                               cp.part_serial as checklist_serial,
-                               cp.checklist_question as checklist_question
-                        FROM jobs j
-                        LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
-                            AND (li.item_serial LIKE ? OR li.item_serial LIKE ?)
-                        LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
-                            AND (cp.part_serial LIKE ? OR cp.part_serial LIKE ?)
-                        WHERE li.item_serial IS NOT NULL OR cp.part_serial IS NOT NULL
-                        ORDER BY j.created_at DESC
-                    """, (f'%{serial}%', f'%{serial}%', f'%{serial}%', f'%{serial}%'))
-
-                    rows = cursor.fetchall()
-                    for row in rows:
-                        # Determine source context (line item name or checklist question)
-                        if row['checklist_serial']:
-                            source = row['checklist_question'] or 'Checklist'
-                        elif row['line_item_serial']:
-                            source = row['line_item_name'] or 'Line Item'
-                        else:
-                            source = 'Unknown'
-
-                        results.append({
-                            'searched_serial': f"{raw_serials[i]} → {serial}" if raw_serials[i] != serial else serial,
-                            'source': source,
-                            'job_number': row['job_number'],
-                            'job_title': row['job_title'],
-                            'customer': row['customer_name'],
-                            'asset': row['asset_name'] or 'N/A',
-                            'service_team': row['service_team'] or 'N/A',
-                            'created_at': row['created_at'],
-                            'job_uid': row['job_uid']
-                        })
-
+                results = search_serials_batch(serial_pairs, cursor)
                 conn.close()
 
                 if results:
-                    st.success(f"✅ Found {len(results)} job(s) across {len(serials)} serial numbers")
+                    st.success(f"✅ Found {len(results)} job(s) across {len(raw_serials)} serial numbers")
 
                     # Display results in a dataframe
                     df = pd.DataFrame(results)
@@ -774,7 +824,8 @@ with st.expander("📋 Bulk Serial Number Lookup"):
 
                     # Show which serials weren't found
                     found_serials = set(df['searched_serial'].unique())
-                    not_found = [s for s in serials if s not in found_serials]
+                    normalized_serials = [n for _, n in serial_pairs]
+                    not_found = [s for s in normalized_serials if s and s not in found_serials and not any(s in fs for fs in found_serials)]
                     if not_found:
                         st.warning(f"⚠️ {len(not_found)} serial(s) not found: {', '.join(not_found)}")
                 else:
@@ -788,7 +839,6 @@ with st.expander("📋 Bulk Serial Number Lookup"):
         if uploaded_file is not None:
             try:
                 # Read CSV
-                import io
                 csv_data = pd.read_csv(uploaded_file)
 
                 # Try to find serial column
@@ -803,57 +853,17 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                     st.info(f"📊 Found {len(raw_serials)} serial numbers in column '{serial_column}'")
 
                     if st.button("🔍 Search from CSV", type="primary"):
-                        # Normalize serials and search
-                        conn = get_db_connection()
-                        cursor = conn.cursor()
-
-                        results = []
+                        # Build serial pairs for batched search
+                        serial_pairs = []
                         for raw_serial in raw_serials:
                             raw_serial = raw_serial.strip()
-                            if not raw_serial:
-                                continue
+                            if raw_serial:
+                                serial_pairs.append((raw_serial, normalize_search_input(raw_serial)))
 
-                            # Normalize the serial to handle human error
-                            serial = normalize_search_input(raw_serial)
-
-                            cursor.execute("""
-                                SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
-                                       j.created_at, j.asset_name, j.service_team,
-                                       li.item_serial as line_item_serial,
-                                       li.item_name as line_item_name,
-                                       cp.part_serial as checklist_serial,
-                                       cp.checklist_question as checklist_question
-                                FROM jobs j
-                                LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
-                                    AND (li.item_serial LIKE ? OR li.item_serial LIKE ?)
-                                LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
-                                    AND (cp.part_serial LIKE ? OR cp.part_serial LIKE ?)
-                                WHERE li.item_serial IS NOT NULL OR cp.part_serial IS NOT NULL
-                                ORDER BY j.created_at DESC
-                            """, (f'%{serial}%', f'%{serial}%', f'%{serial}%', f'%{serial}%'))
-
-                            rows = cursor.fetchall()
-                            for row in rows:
-                                # Determine source context
-                                if row['checklist_serial']:
-                                    source = row['checklist_question'] or 'Checklist'
-                                elif row['line_item_serial']:
-                                    source = row['line_item_name'] or 'Line Item'
-                                else:
-                                    source = 'Unknown'
-
-                                results.append({
-                                    'searched_serial': serial,
-                                    'source': source,
-                                    'job_number': row['job_number'],
-                                    'job_title': row['job_title'],
-                                    'customer': row['customer_name'],
-                                    'asset': row['asset_name'] or 'N/A',
-                                    'service_team': row['service_team'] or 'N/A',
-                                    'created_at': row['created_at'],
-                                    'job_uid': row['job_uid']
-                                })
-
+                        # Batched search - single query instead of N queries
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        results = search_serials_batch(serial_pairs, cursor)
                         conn.close()
 
                         if results:
@@ -876,7 +886,8 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                             )
 
                             found_serials = set(df['searched_serial'].unique())
-                            not_found = [s for s in serials if s not in found_serials]
+                            normalized_serials = [n for _, n in serial_pairs]
+                            not_found = [s for s in normalized_serials if s and s not in found_serials and not any(s in fs for fs in found_serials)]
                             if not_found:
                                 with st.expander(f"⚠️ {len(not_found)} serial(s) not found"):
                                     st.write(', '.join(not_found))
