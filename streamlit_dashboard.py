@@ -10,13 +10,44 @@ import json
 from datetime import datetime
 from pathlib import Path
 import re
-from streamlit_sync import ZuperSync, test_api_connection
-from sync_jobs_to_db import normalize_serial, SERIAL_PATTERN
 
-# Use persistent data directory
-DATA_DIR = Path(__file__).parent / 'data'
-DATA_DIR.mkdir(exist_ok=True)
-DB_FILE = str(DATA_DIR / 'jobs_validation.db')
+# Lazy import to avoid hanging at startup (from plan-performance-optimization branch)
+_zuper_sync_module = None
+_sync_jobs_module = None
+
+def _get_zuper_sync():
+    """Lazy load the streamlit_sync module to prevent startup hangs."""
+    global _zuper_sync_module
+    if _zuper_sync_module is None:
+        from streamlit_sync import ZuperSync, test_api_connection, init_database
+        _zuper_sync_module = {
+            'ZuperSync': ZuperSync,
+            'test_api_connection': test_api_connection,
+            'init_database': init_database
+        }
+    return _zuper_sync_module
+
+def _get_sync_jobs():
+    """Lazy load sync_jobs_to_db module."""
+    global _sync_jobs_module
+    if _sync_jobs_module is None:
+        from sync_jobs_to_db import normalize_serial, SERIAL_PATTERN
+        _sync_jobs_module = {
+            'normalize_serial': normalize_serial,
+            'SERIAL_PATTERN': SERIAL_PATTERN
+        }
+    return _sync_jobs_module
+
+# Use persistent data directory - wrapped in try/except for safety
+try:
+    DATA_DIR = Path(__file__).parent / 'data'
+    DATA_DIR.mkdir(exist_ok=True)
+    DB_FILE = str(DATA_DIR / 'jobs_validation.db')
+except Exception:
+    # Fallback to current directory if there's an issue
+    DATA_DIR = Path('data')
+    DATA_DIR.mkdir(exist_ok=True)
+    DB_FILE = str(DATA_DIR / 'jobs_validation.db')
 
 # Page config
 st.set_page_config(
@@ -55,14 +86,14 @@ def ensure_database_exists():
     """Initialize database if it doesn't exist"""
     import os
     if not os.path.exists(DB_FILE):
-        from streamlit_sync import init_database
-        init_database()
+        sync_module = _get_zuper_sync()
+        sync_module['init_database']()
 
 
 def get_db_connection():
     """Get database connection with timeout"""
     ensure_database_exists()
-    conn = sqlite3.connect(DB_FILE, timeout=30.0)  # 30 second timeout
+    conn = sqlite3.connect(DB_FILE, timeout=10.0)  # 10 second timeout (reduced from 30)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -84,6 +115,11 @@ def normalize_search_input(search_term):
 
     # Remove ALL whitespace (spaces, tabs, newlines) for pattern matching
     cleaned = ''.join(search_term.split())
+
+    # Lazy load serial pattern and normalize function
+    sync_jobs = _get_sync_jobs()
+    SERIAL_PATTERN = sync_jobs['SERIAL_PATTERN']
+    normalize_serial = sync_jobs['normalize_serial']
 
     # Try to match against known serial patterns
     matches = re.findall(SERIAL_PATTERN, cleaned, re.IGNORECASE)
@@ -541,7 +577,8 @@ with st.sidebar:
                 progress_text.info(msg)
 
             try:
-                syncer = ZuperSync(api_key, base_url)
+                sync_module = _get_zuper_sync()
+                syncer = sync_module['ZuperSync'](api_key, base_url)
 
                 # Check if database has data
                 conn = get_db_connection()
@@ -601,7 +638,8 @@ with st.sidebar:
 
                     try:
                         status_text.info("⚡ Starting quick sync...")
-                        syncer = ZuperSync(api_key, base_url)
+                        sync_module = _get_zuper_sync()
+                        syncer = sync_module['ZuperSync'](api_key, base_url)
                         jobs = syncer.fetch_updated_jobs_only(progress_callback)
 
                         if jobs:
@@ -627,7 +665,8 @@ with st.sidebar:
 
                     try:
                         status_text.info("🔄 Starting full sync in batches...")
-                        syncer = ZuperSync(api_key, base_url)
+                        sync_module = _get_zuper_sync()
+                        syncer = sync_module['ZuperSync'](api_key, base_url)
                         jobs = syncer.fetch_jobs_from_api(progress_callback)
                         # Use batch sync with enrichment
                         stats = syncer.sync_jobs_in_batches(jobs, batch_size=150, progress_callback=progress_callback)
