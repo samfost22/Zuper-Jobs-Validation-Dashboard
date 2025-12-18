@@ -20,6 +20,11 @@ JOBS_DATA_FILE = 'jobs_data.json'
 # Slack webhook URL (can be set via environment or passed to sync function)
 SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL', '')
 
+# Feature flag for batch inserts (Phase 4 optimization)
+# Set to "true" to use executemany() instead of individual INSERTs
+# This significantly improves sync performance for large datasets
+USE_BATCH_INSERTS = os.environ.get('USE_BATCH_INSERTS', 'true').lower() == 'true'
+
 # Configuration constants
 ALLOWED_JOB_CATEGORIES = [
     'LaserWeeder Service Call',
@@ -456,54 +461,108 @@ def sync_jobs_to_database(jobs, slack_webhook_url=None):
 
             # Insert line items
             cursor.execute("DELETE FROM job_line_items WHERE job_uid = ?", (job_uid,))
-            for item in line_items:
-                cursor.execute("""
-                    INSERT INTO job_line_items (
-                        job_uid, item_name, item_code, item_serial,
-                        quantity, price, line_item_type, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    job_uid,
-                    item['item_name'],
-                    item['item_code'],
-                    item['item_serial'],
-                    item['quantity'],
-                    item['price'],
-                    item['line_item_type'],
-                    job.get('created_at', '')
-                ))
+            if line_items:
+                if USE_BATCH_INSERTS:
+                    # Batch insert - significantly faster for multiple items
+                    cursor.executemany("""
+                        INSERT INTO job_line_items (
+                            job_uid, item_name, item_code, item_serial,
+                            quantity, price, line_item_type, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, [(
+                        job_uid,
+                        item['item_name'],
+                        item['item_code'],
+                        item['item_serial'],
+                        item['quantity'],
+                        item['price'],
+                        item['line_item_type'],
+                        job.get('created_at', '')
+                    ) for item in line_items])
+                else:
+                    # Legacy: individual inserts
+                    for item in line_items:
+                        cursor.execute("""
+                            INSERT INTO job_line_items (
+                                job_uid, item_name, item_code, item_serial,
+                                quantity, price, line_item_type, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            job_uid,
+                            item['item_name'],
+                            item['item_code'],
+                            item['item_serial'],
+                            item['quantity'],
+                            item['price'],
+                            item['line_item_type'],
+                            job.get('created_at', '')
+                        ))
 
             # Insert checklist parts
             cursor.execute("DELETE FROM job_checklist_parts WHERE job_uid = ?", (job_uid,))
-            for part in checklist_parts:
-                cursor.execute("""
-                    INSERT INTO job_checklist_parts (
-                        job_uid, checklist_question, part_serial,
-                        part_description, status_name, position, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    job_uid,
-                    part['checklist_question'],
-                    part['part_serial'],
-                    part['part_description'],
-                    part['status_name'],
-                    part['position'],
-                    part['updated_at']
-                ))
+            if checklist_parts:
+                if USE_BATCH_INSERTS:
+                    # Batch insert
+                    cursor.executemany("""
+                        INSERT INTO job_checklist_parts (
+                            job_uid, checklist_question, part_serial,
+                            part_description, status_name, position, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, [(
+                        job_uid,
+                        part['checklist_question'],
+                        part['part_serial'],
+                        part['part_description'],
+                        part['status_name'],
+                        part['position'],
+                        part['updated_at']
+                    ) for part in checklist_parts])
+                else:
+                    # Legacy: individual inserts
+                    for part in checklist_parts:
+                        cursor.execute("""
+                            INSERT INTO job_checklist_parts (
+                                job_uid, checklist_question, part_serial,
+                                part_description, status_name, position, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            job_uid,
+                            part['checklist_question'],
+                            part['part_serial'],
+                            part['part_description'],
+                            part['status_name'],
+                            part['position'],
+                            part['updated_at']
+                        ))
 
             # Insert custom fields
             cursor.execute("DELETE FROM job_custom_fields WHERE job_uid = ?", (job_uid,))
-            for field in custom_fields:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO job_custom_fields (
-                        job_uid, field_label, field_value, field_type
-                    ) VALUES (?, ?, ?, ?)
-                """, (
-                    job_uid,
-                    field['field_label'],
-                    field['field_value'],
-                    field['field_type']
-                ))
+            if custom_fields:
+                if USE_BATCH_INSERTS:
+                    # Batch insert
+                    cursor.executemany("""
+                        INSERT OR IGNORE INTO job_custom_fields (
+                            job_uid, field_label, field_value, field_type
+                        ) VALUES (?, ?, ?, ?)
+                    """, [(
+                        job_uid,
+                        field['field_label'],
+                        field['field_value'],
+                        field['field_type']
+                    ) for field in custom_fields])
+                else:
+                    # Legacy: individual inserts
+                    for field in custom_fields:
+                        cursor.execute("""
+                            INSERT OR IGNORE INTO job_custom_fields (
+                                job_uid, field_label, field_value, field_type
+                            ) VALUES (?, ?, ?, ?)
+                        """, (
+                            job_uid,
+                            field['field_label'],
+                            field['field_value'],
+                            field['field_type']
+                        ))
 
             # Run validation logic
             # Get job category

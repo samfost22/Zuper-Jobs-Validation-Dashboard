@@ -113,6 +113,17 @@ CREATE INDEX IF NOT EXISTS idx_flags_job ON validation_flags(job_uid);
 CREATE INDEX IF NOT EXISTS idx_flags_type ON validation_flags(flag_type, is_resolved);
 CREATE INDEX IF NOT EXISTS idx_organizations_netsuite ON organizations(netsuite_customer_id);
 
+-- Composite indexes for common query patterns (Phase 3 optimization)
+-- Supports date range + organization filtering
+CREATE INDEX IF NOT EXISTS idx_jobs_completed_org ON jobs(completed_at, organization_name);
+CREATE INDEX IF NOT EXISTS idx_jobs_created_org ON jobs(created_at, organization_name);
+-- Supports organization name searches
+CREATE INDEX IF NOT EXISTS idx_jobs_org_name ON jobs(organization_name);
+-- Supports date range + service team filtering
+CREATE INDEX IF NOT EXISTS idx_jobs_completed_team ON jobs(completed_at, service_team);
+-- Supports job number lookups
+CREATE INDEX IF NOT EXISTS idx_jobs_job_number ON jobs(job_number);
+
 -- Validation summary view
 CREATE VIEW IF NOT EXISTS job_validation_summary AS
 SELECT
