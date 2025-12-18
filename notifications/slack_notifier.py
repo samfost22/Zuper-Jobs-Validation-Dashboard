@@ -209,12 +209,23 @@ class SlackNotifier:
         return self.send_message(blocks, fallback_text)
 
 
-def init_notification_tracking():
-    """Initialize the notification tracking table in the database."""
+def init_notification_tracking(db_conn=None):
+    """
+    Initialize the notification tracking table in the database.
+
+    Args:
+        db_conn: Optional existing database connection to reuse.
+                 If None, creates a new connection.
+    """
     DATA_DIR.mkdir(exist_ok=True)
 
-    # Use timeout to handle database locks
-    conn = sqlite3.connect(DB_FILE, timeout=30)
+    # Reuse connection if provided, otherwise create new one
+    own_connection = db_conn is None
+    if own_connection:
+        conn = sqlite3.connect(DB_FILE, timeout=30)
+    else:
+        conn = db_conn
+
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -236,13 +247,32 @@ def init_notification_tracking():
     """)
 
     conn.commit()
-    conn.close()
+
+    # Only close if we created the connection
+    if own_connection:
+        conn.close()
 
 
-def was_notification_sent(job_uid: str, notification_type: str = 'missing_netsuite_id') -> bool:
-    """Check if a notification was already sent for this job."""
+def was_notification_sent(job_uid: str, notification_type: str = 'missing_netsuite_id', db_conn=None) -> bool:
+    """
+    Check if a notification was already sent for this job.
+
+    Args:
+        job_uid: The job UID to check.
+        notification_type: Type of notification.
+        db_conn: Optional existing database connection to reuse.
+
+    Returns:
+        True if notification was already sent successfully.
+    """
     try:
-        conn = sqlite3.connect(DB_FILE, timeout=30)
+        # Reuse connection if provided
+        own_connection = db_conn is None
+        if own_connection:
+            conn = sqlite3.connect(DB_FILE, timeout=30)
+        else:
+            conn = db_conn
+
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -252,7 +282,10 @@ def was_notification_sent(job_uid: str, notification_type: str = 'missing_netsui
         """, (job_uid, notification_type))
 
         result = cursor.fetchone() is not None
-        conn.close()
+
+        if own_connection:
+            conn.close()
+
         return result
 
     except sqlite3.Error:
@@ -263,11 +296,27 @@ def record_notification(
     job_uid: str,
     notification_type: str,
     success: bool,
-    error_message: str = None
+    error_message: str = None,
+    db_conn=None
 ):
-    """Record that a notification was sent (or attempted)."""
+    """
+    Record that a notification was sent (or attempted).
+
+    Args:
+        job_uid: The job UID.
+        notification_type: Type of notification.
+        success: Whether the notification was sent successfully.
+        error_message: Optional error message if failed.
+        db_conn: Optional existing database connection to reuse.
+    """
     try:
-        conn = sqlite3.connect(DB_FILE, timeout=30)
+        # Reuse connection if provided
+        own_connection = db_conn is None
+        if own_connection:
+            conn = sqlite3.connect(DB_FILE, timeout=30)
+        else:
+            conn = db_conn
+
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -283,7 +332,9 @@ def record_notification(
         ))
 
         conn.commit()
-        conn.close()
+
+        if own_connection:
+            conn.close()
 
     except sqlite3.Error as e:
         print(f"Failed to record notification: {e}")
@@ -299,7 +350,8 @@ def send_missing_netsuite_notification(
     service_team: str,
     completed_at: str,
     line_items: list,
-    force: bool = False
+    force: bool = False,
+    db_conn=None
 ) -> bool:
     """
     Send a notification for a job missing NetSuite ID.
@@ -317,6 +369,7 @@ def send_missing_netsuite_notification(
         completed_at: Completion timestamp
         line_items: List of line item names
         force: Send even if already notified
+        db_conn: Optional existing database connection to reuse (Phase 5 optimization)
 
     Returns:
         True if notification was sent successfully
@@ -332,8 +385,8 @@ def send_missing_netsuite_notification(
     # Use a try/except to handle database locks gracefully
     if not force:
         try:
-            init_notification_tracking()
-            if was_notification_sent(job_uid, 'missing_netsuite_id'):
+            init_notification_tracking(db_conn=db_conn)
+            if was_notification_sent(job_uid, 'missing_netsuite_id', db_conn=db_conn):
                 print(f"  [Notification] SKIPPED - Already notified for this job")
                 return False
         except Exception as db_err:
@@ -380,7 +433,8 @@ def send_missing_netsuite_notification(
             job_uid=job_uid,
             notification_type='missing_netsuite_id',
             success=success,
-            error_message=None if success else "Failed to send notification"
+            error_message=None if success else "Failed to send notification",
+            db_conn=db_conn
         )
     except Exception as db_err:
         print(f"  [Notification] Warning: Could not record notification (but it was sent): {db_err}")
