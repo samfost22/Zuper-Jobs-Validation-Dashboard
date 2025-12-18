@@ -17,6 +17,14 @@ DATA_DIR.mkdir(exist_ok=True)
 DB_FILE = str(DATA_DIR / 'jobs_validation.db')
 JOBS_DATA_FILE = 'jobs_data.json'
 
+# Slack webhook URL (can be set via environment or passed to sync function)
+SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL', '')
+
+# Feature flag for batch inserts (Phase 4 optimization)
+# Set to "true" to use executemany() instead of individual INSERTs
+# This significantly improves sync performance for large datasets
+USE_BATCH_INSERTS = os.environ.get('USE_BATCH_INSERTS', 'true').lower() == 'true'
+
 # Configuration constants
 ALLOWED_JOB_CATEGORIES = [
     'LaserWeeder Service Call',
@@ -32,7 +40,19 @@ SKIP_VALIDATION_CATEGORIES = [
 
 CONSUMABLE_TERMS = ['consumable', 'consumables', 'supplies', 'service']
 
-SERIAL_PATTERN = r'CR-SM-\d{5,6}(?:-RW)?'
+# Serial number patterns by part type
+# Add new patterns here as needed - they will automatically be included in searches
+# Note: -? makes dashes optional to handle input like "WM250613004" or "CRSM000571RW"
+SERIAL_PATTERNS = {
+    'scanner_module': r'CR-?SM-?\d{6}(?:-?RW)?',   # 0000144: CR-SM-000571, CR-SM-000571-RW
+    'y150_component': r'CR-?Y150-?\d{6}-?R',       # 0000508-C: CR-Y150-005032-R
+    'mpc_component': r'CR-?MPC-?\d{5}',            # G4000: CR-MPC-00278
+    'sm_module': r'SM-?\d{6}-?\d{3}',              # 0000612-B: SM-250721-002
+    'weeding_module': r'WM-?\d{6}-?\d{3}',         # 0000675: WM-250613-004
+}
+
+# Combined pattern for matching any serial number
+SERIAL_PATTERN = '(?:' + '|'.join(SERIAL_PATTERNS.values()) + ')'
 
 def init_database():
     """Initialize the SQLite database with schema"""
@@ -71,13 +91,73 @@ def load_jobs_data():
 
     return jobs
 
+def normalize_serial(serial):
+    """Normalize a serial number to canonical format with proper dashes.
+
+    Converts any valid serial input to standard format:
+    - WM250613004 → WM-250613-004
+    - CRSM000571RW → CR-SM-000571-RW
+    - sm250721002 → SM-250721-002
+    """
+    s = serial.upper().replace('-', '')  # Remove existing dashes, uppercase
+
+    # CR-SM-NNNNNN or CR-SM-NNNNNN-RW (Scanner Module)
+    if s.startswith('CRSM'):
+        digits = s[4:]
+        if digits.endswith('RW'):
+            return f"CR-SM-{digits[:-2]}-RW"
+        return f"CR-SM-{digits}"
+
+    # CR-Y150-NNNNNN-R (Y150 Component)
+    if s.startswith('CRY150'):
+        digits = s[6:]
+        if digits.endswith('R'):
+            return f"CR-Y150-{digits[:-1]}-R"
+        return f"CR-Y150-{digits}"
+
+    # CR-MPC-NNNNN (MPC Component)
+    if s.startswith('CRMPC'):
+        return f"CR-MPC-{s[5:]}"
+
+    # SM-YYMMDD-NNN (SM Module)
+    if s.startswith('SM') and not s.startswith('CRSM'):
+        digits = s[2:]
+        if len(digits) >= 9:
+            return f"SM-{digits[:6]}-{digits[6:]}"
+        return f"SM-{digits}"
+
+    # WM-YYMMDD-NNN (Weeding Module)
+    if s.startswith('WM'):
+        digits = s[2:]
+        if len(digits) >= 9:
+            return f"WM-{digits[:6]}-{digits[6:]}"
+        return f"WM-{digits}"
+
+    return serial.upper()  # Return as-is if no pattern matched
+
+
 def extract_serial_from_text(text):
-    """Extract scanner serial numbers from text using regex"""
+    """Extract serial numbers from text using regex.
+
+    Matches patterns defined in SERIAL_PATTERNS dict:
+    - CR-SM-NNNNNN[-RW]: Scanner Module (0000144)
+    - CR-Y150-NNNNNN-R: Y150 Component (0000508-C)
+    - CR-MPC-NNNNN: MPC Component (G4000)
+    - SM-YYMMDD-NNN: SM Module (0000612-B)
+    - WM-YYMMDD-NNN: Weeding Module (0000675)
+
+    Handles common input errors like extra spaces or missing dashes.
+    All serials are normalized to canonical format (e.g., WM-250613-004).
+    To add new patterns, update the SERIAL_PATTERNS dictionary.
+    """
     if not text:
         return []
 
-    matches = re.findall(SERIAL_PATTERN, str(text), re.IGNORECASE)
-    return [m.upper() for m in matches]
+    # Normalize: remove ALL whitespace (spaces, tabs) to handle typos like "WM - 250613-004"
+    normalized = ''.join(str(text).split())
+    matches = re.findall(SERIAL_PATTERN, normalized, re.IGNORECASE)
+    # Normalize each match to canonical format with dashes
+    return [normalize_serial(m) for m in matches]
 
 def extract_asset_from_job(job):
     """Extract asset information from job's assets array"""
@@ -258,9 +338,19 @@ def get_job_category(job):
         return categories.get('category_name', '')
     return ''
 
-def sync_jobs_to_database(jobs):
-    """Sync all jobs to database"""
+def sync_jobs_to_database(jobs, slack_webhook_url=None):
+    """
+    Sync all jobs to database and send Slack notifications for completed jobs
+    missing NetSuite IDs.
+
+    Args:
+        jobs: List of job dictionaries from Zuper API
+        slack_webhook_url: Optional Slack webhook URL for notifications
+    """
     print("\nSyncing jobs to database...")
+
+    # Use provided webhook URL or fall back to environment variable
+    webhook_url = slack_webhook_url or SLACK_WEBHOOK_URL
 
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -371,54 +461,108 @@ def sync_jobs_to_database(jobs):
 
             # Insert line items
             cursor.execute("DELETE FROM job_line_items WHERE job_uid = ?", (job_uid,))
-            for item in line_items:
-                cursor.execute("""
-                    INSERT INTO job_line_items (
-                        job_uid, item_name, item_code, item_serial,
-                        quantity, price, line_item_type, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    job_uid,
-                    item['item_name'],
-                    item['item_code'],
-                    item['item_serial'],
-                    item['quantity'],
-                    item['price'],
-                    item['line_item_type'],
-                    job.get('created_at', '')
-                ))
+            if line_items:
+                if USE_BATCH_INSERTS:
+                    # Batch insert - significantly faster for multiple items
+                    cursor.executemany("""
+                        INSERT INTO job_line_items (
+                            job_uid, item_name, item_code, item_serial,
+                            quantity, price, line_item_type, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, [(
+                        job_uid,
+                        item['item_name'],
+                        item['item_code'],
+                        item['item_serial'],
+                        item['quantity'],
+                        item['price'],
+                        item['line_item_type'],
+                        job.get('created_at', '')
+                    ) for item in line_items])
+                else:
+                    # Legacy: individual inserts
+                    for item in line_items:
+                        cursor.execute("""
+                            INSERT INTO job_line_items (
+                                job_uid, item_name, item_code, item_serial,
+                                quantity, price, line_item_type, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            job_uid,
+                            item['item_name'],
+                            item['item_code'],
+                            item['item_serial'],
+                            item['quantity'],
+                            item['price'],
+                            item['line_item_type'],
+                            job.get('created_at', '')
+                        ))
 
             # Insert checklist parts
             cursor.execute("DELETE FROM job_checklist_parts WHERE job_uid = ?", (job_uid,))
-            for part in checklist_parts:
-                cursor.execute("""
-                    INSERT INTO job_checklist_parts (
-                        job_uid, checklist_question, part_serial,
-                        part_description, status_name, position, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    job_uid,
-                    part['checklist_question'],
-                    part['part_serial'],
-                    part['part_description'],
-                    part['status_name'],
-                    part['position'],
-                    part['updated_at']
-                ))
+            if checklist_parts:
+                if USE_BATCH_INSERTS:
+                    # Batch insert
+                    cursor.executemany("""
+                        INSERT INTO job_checklist_parts (
+                            job_uid, checklist_question, part_serial,
+                            part_description, status_name, position, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, [(
+                        job_uid,
+                        part['checklist_question'],
+                        part['part_serial'],
+                        part['part_description'],
+                        part['status_name'],
+                        part['position'],
+                        part['updated_at']
+                    ) for part in checklist_parts])
+                else:
+                    # Legacy: individual inserts
+                    for part in checklist_parts:
+                        cursor.execute("""
+                            INSERT INTO job_checklist_parts (
+                                job_uid, checklist_question, part_serial,
+                                part_description, status_name, position, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            job_uid,
+                            part['checklist_question'],
+                            part['part_serial'],
+                            part['part_description'],
+                            part['status_name'],
+                            part['position'],
+                            part['updated_at']
+                        ))
 
             # Insert custom fields
             cursor.execute("DELETE FROM job_custom_fields WHERE job_uid = ?", (job_uid,))
-            for field in custom_fields:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO job_custom_fields (
-                        job_uid, field_label, field_value, field_type
-                    ) VALUES (?, ?, ?, ?)
-                """, (
-                    job_uid,
-                    field['field_label'],
-                    field['field_value'],
-                    field['field_type']
-                ))
+            if custom_fields:
+                if USE_BATCH_INSERTS:
+                    # Batch insert
+                    cursor.executemany("""
+                        INSERT OR IGNORE INTO job_custom_fields (
+                            job_uid, field_label, field_value, field_type
+                        ) VALUES (?, ?, ?, ?)
+                    """, [(
+                        job_uid,
+                        field['field_label'],
+                        field['field_value'],
+                        field['field_type']
+                    ) for field in custom_fields])
+                else:
+                    # Legacy: individual inserts
+                    for field in custom_fields:
+                        cursor.execute("""
+                            INSERT OR IGNORE INTO job_custom_fields (
+                                job_uid, field_label, field_value, field_type
+                            ) VALUES (?, ?, ?, ?)
+                        """, (
+                            job_uid,
+                            field['field_label'],
+                            field['field_value'],
+                            field['field_type']
+                        ))
 
             # Run validation logic
             # Get job category
@@ -430,7 +574,13 @@ def sync_jobs_to_database(jobs):
             # Clear old flags for this job
             cursor.execute("DELETE FROM validation_flags WHERE job_uid = ?", (job_uid,))
 
-            # Insert new flags
+            # Insert new flags and send notifications
+            job_number = job.get('work_order_number', '') or job.get('job_number', '')
+            job_title = job.get('job_title', '')
+            service_team = get_service_team(job)
+            asset_name = extract_asset_from_job(job)
+            completed_at = get_completion_date(job)
+
             for flag in validation_flags:
                 cursor.execute("""
                     INSERT INTO validation_flags (
@@ -445,6 +595,51 @@ def sync_jobs_to_database(jobs):
                     datetime.now().isoformat()
                 ))
                 flags_created += 1
+
+                # Send Slack notification for RECENTLY completed jobs missing NetSuite ID
+                # Only notify jobs completed in the last 48 hours to avoid flooding on first sync
+                if (webhook_url and
+                    flag['flag_type'] == 'missing_netsuite_id' and
+                    completed_at):
+                    try:
+                        from notifications.slack_notifier import send_missing_netsuite_notification
+
+                        # Check if job was completed recently (within 48 hours)
+                        is_recent = False
+                        try:
+                            # Handle various date formats from Zuper API
+                            date_str = completed_at.replace('Z', '').replace('+00:00', '')
+                            # Remove microseconds if present (take only first 19 chars: YYYY-MM-DDTHH:MM:SS)
+                            if 'T' in date_str and len(date_str) > 19:
+                                date_str = date_str[:19]
+                            completed_dt = datetime.fromisoformat(date_str)
+                            hours_ago = (datetime.now() - completed_dt).total_seconds() / 3600
+                            is_recent = hours_ago <= 48
+                            print(f"  Job {job_number}: completed {hours_ago:.1f} hours ago, is_recent={is_recent}")
+                        except Exception as date_err:
+                            print(f"  Warning: Could not parse date '{completed_at}' for job {job_number}: {date_err}")
+                            is_recent = False
+
+                        if is_recent:
+                            line_item_names = flag.get('details', {}).get('line_items', [])
+                            result = send_missing_netsuite_notification(
+                                webhook_url=webhook_url,
+                                job_uid=job_uid,
+                                job_number=job_number,
+                                job_title=job_title,
+                                organization_name=organization_name,
+                                asset_name=asset_name,
+                                service_team=service_team,
+                                completed_at=completed_at,
+                                line_items=line_item_names
+                            )
+                            if result:
+                                print(f"  ✓ Slack notification sent for job {job_number}")
+                            else:
+                                print(f"  ✗ Slack notification skipped/failed for job {job_number}")
+                    except Exception as notif_error:
+                        # Don't fail sync if notification fails
+                        print(f"  Warning: Failed to send Slack notification for {job_number}: {notif_error}")
 
             jobs_processed += 1
 

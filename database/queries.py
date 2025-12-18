@@ -13,6 +13,20 @@ from config import JOBS_DB_FILE, JOBS_PER_PAGE
 
 logger = logging.getLogger(__name__)
 
+# Initialize database once at module load time (not on every query)
+# This avoids redundant file existence checks on every database operation
+_db_initialized = False
+
+def _ensure_db_ready():
+    """Ensure database is initialized (called once per process)."""
+    global _db_initialized
+    if not _db_initialized:
+        ensure_database_exists()
+        _db_initialized = True
+
+# Initialize on module import
+_ensure_db_ready()
+
 
 def get_metrics() -> Dict[str, int]:
     """
@@ -30,7 +44,6 @@ def get_metrics() -> Dict[str, int]:
     }
 
     try:
-        ensure_database_exists()
         with db_session() as conn:
             cursor = conn.cursor()
 
@@ -185,7 +198,6 @@ def get_jobs(
         Tuple of (jobs list, total count)
     """
     try:
-        ensure_database_exists()
         offset = (page - 1) * limit
 
         # Build filter components
@@ -268,7 +280,6 @@ def get_filter_options() -> Tuple[List[str], List[str]]:
         Tuple of (organizations list, teams list)
     """
     try:
-        ensure_database_exists()
         with db_session() as conn:
             cursor = conn.cursor()
 
@@ -303,7 +314,6 @@ def get_assets_with_counts() -> List[Tuple[str, str]]:
         List of (asset_name, display_label) tuples.
     """
     try:
-        ensure_database_exists()
         with db_session() as conn:
             cursor = conn.cursor()
 
@@ -366,7 +376,7 @@ def mark_job_resolved(job_uid: str) -> int:
 
 def search_serials_bulk(serials: List[str]) -> List[Dict]:
     """
-    Search for jobs by multiple serial numbers.
+    Search for jobs by multiple serial numbers using a single batched query.
 
     Args:
         serials: List of serial numbers to search for.
@@ -375,43 +385,56 @@ def search_serials_bulk(serials: List[str]) -> List[Dict]:
         List of matching job records with serial info.
     """
     try:
-        ensure_database_exists()
-        results = []
+        # Clean and deduplicate serials
+        clean_serials = list(set(s.strip() for s in serials if s.strip()))
+
+        if not clean_serials:
+            return []
 
         with db_session() as conn:
             cursor = conn.cursor()
 
-            for serial in serials:
-                serial = serial.strip()
-                if not serial:
-                    continue
+            # Build single query with OR conditions for all serials
+            # This replaces N queries with 1 query
+            or_conditions = []
+            params = []
+            for serial in clean_serials:
+                or_conditions.append("(li.item_serial LIKE ? OR cp.part_serial LIKE ?)")
+                params.extend([f'%{serial}%', f'%{serial}%'])
 
-                cursor.execute("""
-                    SELECT DISTINCT
-                        j.job_uid, j.job_number, j.job_title, j.customer_name,
-                        j.created_at, j.asset_name, j.service_team,
-                        li.item_serial as line_item_serial,
-                        cp.part_serial as checklist_serial
-                    FROM jobs j
-                    LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
-                        AND li.item_serial LIKE ?
-                    LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
-                        AND cp.part_serial LIKE ?
-                    WHERE li.item_serial IS NOT NULL OR cp.part_serial IS NOT NULL
-                    ORDER BY j.created_at DESC
-                """, (f'%{serial}%', f'%{serial}%'))
+            query = f"""
+                SELECT DISTINCT
+                    j.job_uid, j.job_number, j.job_title, j.customer_name,
+                    j.created_at, j.asset_name, j.service_team,
+                    li.item_serial as line_item_serial,
+                    cp.part_serial as checklist_serial
+                FROM jobs j
+                LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
+                LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
+                WHERE ({' OR '.join(or_conditions)})
+                ORDER BY j.created_at DESC
+            """
 
-                for row in cursor.fetchall():
-                    results.append({
-                        'searched_serial': serial,
-                        'job_uid': row['job_uid'],
-                        'job_number': row['job_number'],
-                        'job_title': row['job_title'],
-                        'customer': row['customer_name'],
-                        'asset': row['asset_name'] or 'N/A',
-                        'service_team': row['service_team'] or 'N/A',
-                        'created_at': row['created_at']
-                    })
+            cursor.execute(query, params)
+
+            results = []
+            for row in cursor.fetchall():
+                line_serial = row['line_item_serial'] or ''
+                check_serial = row['checklist_serial'] or ''
+
+                # Determine which searched serial(s) matched this row
+                for serial in clean_serials:
+                    if serial.upper() in line_serial.upper() or serial.upper() in check_serial.upper():
+                        results.append({
+                            'searched_serial': serial,
+                            'job_uid': row['job_uid'],
+                            'job_number': row['job_number'],
+                            'job_title': row['job_title'],
+                            'customer': row['customer_name'],
+                            'asset': row['asset_name'] or 'N/A',
+                            'service_team': row['service_team'] or 'N/A',
+                            'created_at': row['created_at']
+                        })
 
         return results
 
@@ -428,7 +451,6 @@ def get_last_sync_time() -> Optional[str]:
         ISO format timestamp string or None.
     """
     try:
-        ensure_database_exists()
         with db_session() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -454,7 +476,6 @@ def get_job_count() -> int:
         Number of jobs, or 0 on error.
     """
     try:
-        ensure_database_exists()
         with db_session() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM jobs")

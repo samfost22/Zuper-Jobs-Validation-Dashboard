@@ -9,6 +9,10 @@ import pandas as pd
 import json
 from datetime import datetime
 from pathlib import Path
+import re
+from streamlit_sync import ZuperSync, test_api_connection
+from sync_jobs_to_db import normalize_serial, SERIAL_PATTERN
+from github_artifact import ensure_database_from_artifact
 
 # Lazy import to avoid hanging at startup
 _zuper_sync_module = None
@@ -70,11 +74,14 @@ if 'asset_filter' not in st.session_state:
 
 
 def ensure_database_exists():
-    """Initialize database if it doesn't exist"""
+    """Initialize database if it doesn't exist, downloading from GitHub artifact if available"""
     import os
     if not os.path.exists(DB_FILE):
-        sync_module = _get_zuper_sync()
-        sync_module['init_database']()
+        # Try to download from GitHub artifact first (for Streamlit Cloud)
+        if not ensure_database_from_artifact(DB_FILE):
+            # Fall back to creating empty database
+            from streamlit_sync import init_database
+            init_database()
 
 
 def get_db_connection():
@@ -85,51 +92,161 @@ def get_db_connection():
     return conn
 
 
+def normalize_search_input(search_term):
+    """Normalize serial number search input to handle human error.
+
+    Handles:
+    - Extra spaces/tabs: "WM 250613 004" → "WM-250613-004"
+    - Missing dashes: "wm250613004" → "WM-250613-004"
+    - Mixed case: "wM-250613-004" → "WM-250613-004"
+    - Partial input: "250613" → "250613" (unchanged, for partial matches)
+
+    Returns normalized serial if it matches a known pattern, otherwise
+    returns cleaned input for partial matching.
+    """
+    if not search_term:
+        return ''
+
+    # Remove ALL whitespace (spaces, tabs, newlines) for pattern matching
+    cleaned = ''.join(search_term.split())
+
+    # Try to match against known serial patterns
+    matches = re.findall(SERIAL_PATTERN, cleaned, re.IGNORECASE)
+    if matches:
+        # Found a valid serial pattern - normalize it
+        return normalize_serial(matches[0])
+
+    # No pattern match - return cleaned input for partial search
+    # This allows searching by partial serial like "250613" or "000571"
+    return cleaned.upper()
+
+
+def search_serials_batch(serial_pairs, cursor):
+    """
+    Search for multiple serial numbers in a single batched query.
+
+    Args:
+        serial_pairs: List of (raw_serial, normalized_serial) tuples
+        cursor: Database cursor
+
+    Returns:
+        List of result dicts with 'searched_serial' properly attributed
+    """
+    if not serial_pairs:
+        return []
+
+    # Get unique normalized serials for the query
+    unique_serials = list(set(normalized for _, normalized in serial_pairs if normalized))
+
+    if not unique_serials:
+        return []
+
+    # Build a single query with OR conditions for all serials
+    # This replaces N queries with 1 query
+    or_conditions = []
+    params = []
+    for serial in unique_serials:
+        or_conditions.append("(li.item_serial LIKE ? OR cp.part_serial LIKE ?)")
+        params.extend([f'%{serial}%', f'%{serial}%'])
+
+    query = f"""
+        SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
+               j.created_at, j.asset_name, j.service_team,
+               li.item_serial as line_item_serial,
+               li.item_name as line_item_name,
+               cp.part_serial as checklist_serial,
+               cp.checklist_question as checklist_question
+        FROM jobs j
+        LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
+        LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
+        WHERE ({' OR '.join(or_conditions)})
+        ORDER BY j.created_at DESC
+    """
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+
+    # Build a mapping from normalized serial to raw serial for display
+    serial_display_map = {}
+    for raw, normalized in serial_pairs:
+        if normalized:
+            if normalized not in serial_display_map:
+                serial_display_map[normalized] = raw if raw != normalized else normalized
+
+    results = []
+    for row in rows:
+        line_serial = row['line_item_serial'] or ''
+        check_serial = row['checklist_serial'] or ''
+
+        # Determine which searched serial(s) matched this row
+        matched_serials = set()
+        for raw, normalized in serial_pairs:
+            if not normalized:
+                continue
+            if normalized.upper() in line_serial.upper() or normalized.upper() in check_serial.upper():
+                display = f"{raw} → {normalized}" if raw != normalized else normalized
+                matched_serials.add(display)
+
+        # Determine source context
+        if check_serial:
+            source = row['checklist_question'] or 'Checklist'
+        elif line_serial:
+            source = row['line_item_name'] or 'Line Item'
+        else:
+            source = 'Unknown'
+
+        # Create a result entry for each matched serial
+        for searched in matched_serials:
+            results.append({
+                'searched_serial': searched,
+                'source': source,
+                'job_number': row['job_number'],
+                'job_title': row['job_title'],
+                'customer': row['customer_name'],
+                'asset': row['asset_name'] or 'N/A',
+                'service_team': row['service_team'] or 'N/A',
+                'created_at': row['created_at'],
+                'job_uid': row['job_uid']
+            })
+
+    return results
+
+
 @st.cache_data(ttl=60)  # Cache for 60 seconds
 def get_metrics():
-    """Get dashboard metrics"""
+    """Get dashboard metrics with a single optimized query"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Total jobs
-        cursor.execute("SELECT COUNT(*) as total FROM jobs")
-        total_jobs = cursor.fetchone()['total']
-
-        # Jobs with parts replaced but no line items
+        # Combined query: get all metrics in one database round-trip
         cursor.execute("""
-            SELECT COUNT(DISTINCT job_uid) as count
-            FROM validation_flags
-            WHERE flag_type = 'parts_replaced_no_line_items'
-            AND is_resolved = 0
-        """)
-        parts_no_items_count = cursor.fetchone()['count']
-
-        # Jobs with line items but missing NetSuite ID
-        cursor.execute("""
-            SELECT COUNT(DISTINCT job_uid) as count
-            FROM validation_flags
-            WHERE flag_type = 'missing_netsuite_id'
-            AND is_resolved = 0
-        """)
-        missing_netsuite_count = cursor.fetchone()['count']
-
-        # Jobs passing all validations
-        cursor.execute("""
-            SELECT COUNT(*) as count
+            SELECT
+                COUNT(DISTINCT j.job_uid) as total_jobs,
+                COUNT(DISTINCT CASE
+                    WHEN vf.flag_type = 'parts_replaced_no_line_items' AND vf.is_resolved = 0
+                    THEN vf.job_uid
+                END) as parts_no_items_count,
+                COUNT(DISTINCT CASE
+                    WHEN vf.flag_type = 'missing_netsuite_id' AND vf.is_resolved = 0
+                    THEN vf.job_uid
+                END) as missing_netsuite_count,
+                COUNT(DISTINCT CASE
+                    WHEN vf.id IS NULL
+                    THEN j.job_uid
+                END) as passing_count
             FROM jobs j
             LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
-            WHERE vf.id IS NULL
         """)
-        passing_count = cursor.fetchone()['count']
 
+        row = cursor.fetchone()
         conn.close()
 
         return {
-            'total_jobs': total_jobs,
-            'parts_no_items_count': parts_no_items_count,
-            'missing_netsuite_count': missing_netsuite_count,
-            'passing_count': passing_count
+            'total_jobs': row['total_jobs'] or 0,
+            'parts_no_items_count': row['parts_no_items_count'] or 0,
+            'missing_netsuite_count': row['missing_netsuite_count'] or 0,
+            'passing_count': row['passing_count'] or 0
         }
     except Exception as e:
         # Return zeros if database is empty or has issues
@@ -143,7 +260,7 @@ def get_metrics():
 
 @st.cache_data(ttl=60)  # Cache for 60 seconds
 def get_jobs(filter_type='all', page=1, month='', organization='', team='', start_date=None, end_date=None, job_number='', part_search='', serial_search='', asset='', limit=50):
-    """Get jobs list with filtering and pagination"""
+    """Get jobs list with filtering and pagination using parameterized queries"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -154,52 +271,68 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
         return [], 0
 
     try:
-        # Build filter clauses
+        # Build filter clauses with parameterized queries (prevents SQL injection)
         filter_clauses = []
+        params = []
 
         # Job number search (exact or partial match)
         if job_number:
-            filter_clauses.append(f"j.job_number LIKE '%{job_number}%'")
+            filter_clauses.append("j.job_number LIKE ?")
+            params.append(f"%{job_number}%")
 
         # Date range filter (takes precedence over month filter)
         if start_date and end_date:
-            filter_clauses.append(f"(date(COALESCE(j.completed_at, j.created_at)) BETWEEN '{start_date}' AND '{end_date}')")
+            filter_clauses.append("date(COALESCE(j.completed_at, j.created_at)) BETWEEN ? AND ?")
+            params.extend([start_date, end_date])
         elif month:
-            filter_clauses.append(f"(strftime('%Y-%m', COALESCE(j.completed_at, j.created_at)) = '{month}')")
+            filter_clauses.append("strftime('%Y-%m', COALESCE(j.completed_at, j.created_at)) = ?")
+            params.append(month)
 
         if organization:
-            filter_clauses.append(f"j.organization_name LIKE '%{organization}%'")
+            filter_clauses.append("j.organization_name LIKE ?")
+            params.append(f"%{organization}%")
 
         if team:
-            filter_clauses.append(f"j.service_team LIKE '%{team}%'")
+            filter_clauses.append("j.service_team LIKE ?")
+            params.append(f"%{team}%")
 
         if asset:
-            filter_clauses.append(f"j.asset_name = '{asset}'")
+            filter_clauses.append("j.asset_name = ?")
+            params.append(asset)
 
         date_clause = ("AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
 
         # Add part search join if needed
         part_join = ""
         part_where = ""
+        part_params = []
         if part_search:
             part_join = "JOIN job_line_items li ON j.job_uid = li.job_uid"
-            part_where = f"AND (li.item_name LIKE '%{part_search}%' OR li.item_code LIKE '%{part_search}%')"
+            part_where = "AND (li.item_name LIKE ? OR li.item_code LIKE ?)"
+            part_params.extend([f"%{part_search}%", f"%{part_search}%"])
 
         # Add serial number search join if needed
         serial_join = ""
         serial_where = ""
+        serial_params = []
         if serial_search:
             # Search in both line items and checklist parts
             serial_join = """
             LEFT JOIN job_line_items li2 ON j.job_uid = li2.job_uid
             LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
             """
-            serial_where = f"AND (li2.item_serial LIKE '%{serial_search}%' OR cp.part_serial LIKE '%{serial_search}%')"
+            serial_where = "AND (li2.item_serial LIKE ? OR cp.part_serial LIKE ?)"
+            serial_params.extend([f"%{serial_search}%", f"%{serial_search}%"])
             # If both part and serial search, combine the joins
             if part_search:
                 serial_join = "LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid"
-                part_where = f"AND (li.item_name LIKE '%{part_search}%' OR li.item_code LIKE '%{part_search}%' OR li.item_serial LIKE '%{serial_search}%' OR cp.part_serial LIKE '%{serial_search}%')"
+                part_where = "AND (li.item_name LIKE ? OR li.item_code LIKE ? OR li.item_serial LIKE ? OR cp.part_serial LIKE ?)"
+                part_params = [f"%{part_search}%", f"%{part_search}%", f"%{serial_search}%", f"%{serial_search}%"]
                 serial_where = ""
+                serial_params = []
+
+        # Combine all parameters in order
+        all_params = params + part_params + serial_params
 
         # Build query based on filter
         if filter_type == 'parts_no_items':
@@ -261,21 +394,45 @@ def get_jobs(filter_type='all', page=1, month='', organization='', team='', star
                 LIMIT ? OFFSET ?
             """
 
-        cursor.execute(query, (limit, offset))
+        # Execute with parameterized values
+        query_params = all_params + [limit, offset]
+        cursor.execute(query, query_params)
         jobs = [dict(row) for row in cursor.fetchall()]
 
-        # Get total count (with part/serial search if applicable)
+        # Get total count using same parameterized approach
         if filter_type == 'parts_no_items':
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid {part_join} {serial_join} WHERE vf.flag_type = 'parts_replaced_no_line_items' AND vf.is_resolved = 0 {date_clause} {part_where} {serial_where}"
+            count_query = f"""
+                SELECT COUNT(DISTINCT j.job_uid) FROM jobs j
+                JOIN validation_flags vf ON j.job_uid = vf.job_uid
+                {part_join} {serial_join}
+                WHERE vf.flag_type = 'parts_replaced_no_line_items' AND vf.is_resolved = 0
+                {date_clause} {part_where} {serial_where}
+            """
         elif filter_type == 'missing_netsuite':
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j JOIN validation_flags vf ON j.job_uid = vf.job_uid {part_join} {serial_join} WHERE vf.flag_type = 'missing_netsuite_id' AND vf.is_resolved = 0 {date_clause} {part_where} {serial_where}"
+            count_query = f"""
+                SELECT COUNT(DISTINCT j.job_uid) FROM jobs j
+                JOIN validation_flags vf ON j.job_uid = vf.job_uid
+                {part_join} {serial_join}
+                WHERE vf.flag_type = 'missing_netsuite_id' AND vf.is_resolved = 0
+                {date_clause} {part_where} {serial_where}
+            """
         elif filter_type == 'passing':
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0 {part_join} {serial_join} WHERE vf.id IS NULL {date_clause} {part_where} {serial_where}"
+            count_query = f"""
+                SELECT COUNT(DISTINCT j.job_uid) FROM jobs j
+                LEFT JOIN validation_flags vf ON j.job_uid = vf.job_uid AND vf.is_resolved = 0
+                {part_join} {serial_join}
+                WHERE vf.id IS NULL
+                {date_clause} {part_where} {serial_where}
+            """
         else:
-            count_where = f"WHERE {date_clause[4:]}" if date_clause else ""
-            count_query = f"SELECT COUNT(DISTINCT j.job_uid) FROM jobs j {part_join} {serial_join} {count_where} {part_where if part_search or serial_search else ''} {serial_where if serial_search and not part_search else ''}"
+            count_query = f"""
+                SELECT COUNT(DISTINCT j.job_uid) FROM jobs j
+                {part_join} {serial_join}
+                WHERE 1=1
+                {date_clause} {part_where} {serial_where}
+            """
 
-        cursor.execute(count_query)
+        cursor.execute(count_query, all_params)
         total_count = cursor.fetchone()[0]
 
         conn.close()
@@ -377,7 +534,7 @@ st.title("📊 Zuper Jobs Validation Dashboard")
 # Sidebar for API and Sync
 with st.sidebar:
     st.header("🔄 Data Sync")
-    
+
     # Check for API credentials
     try:
         api_key = st.secrets["zuper"]["api_key"]
@@ -387,7 +544,18 @@ with st.sidebar:
         has_credentials = False
         st.warning("⚠️ API credentials not configured")
         st.info("Add credentials to `.streamlit/secrets.toml` to enable sync")
-    
+
+    # Check for Slack webhook
+    try:
+        slack_webhook = st.secrets.get("slack", {}).get("webhook_url", "")
+        if slack_webhook:
+            st.success("🔔 Slack notifications: ON")
+        else:
+            st.info("🔕 Slack notifications: OFF")
+    except:
+        slack_webhook = ""
+        st.info("🔕 Slack notifications: OFF")
+
     if has_credentials:
         # Smart sync button - auto-detects if database is empty
         if st.button("🔄 Sync Data", type="primary", use_container_width=True, help="Automatically syncs data (smart mode)"):
@@ -559,48 +727,55 @@ except Exception as e:
     st.cache_data.clear()
     organizations, teams = [], []
 
-# First row: Job number search, Part search, Serial search, and date range
-col1, col2, col3, col4, col5 = st.columns(5)
+# Text search filters wrapped in a form to prevent re-renders on every keystroke
+with st.form(key="search_filters_form"):
+    # First row: Job number search, Part search, Serial search, and date range
+    col1, col2, col3, col4, col5 = st.columns(5)
 
-with col1:
-    job_number_input = st.text_input("🔍 Job Number", placeholder="Enter job number...", key="job_number_input")
-    if job_number_input:
-        st.session_state.job_number_search = job_number_input
+    with col1:
+        job_number_input = st.text_input(
+            "🔍 Job Number",
+            value=st.session_state.job_number_search,
+            placeholder="Enter job number...",
+            key="job_number_input"
+        )
+
+    with col2:
+        part_input = st.text_input(
+            "🔧 Part Name/Code",
+            value=st.session_state.part_search,
+            placeholder="Enter part name or code...",
+            key="part_input"
+        )
+
+    with col3:
+        serial_input = st.text_input(
+            "🏷️ Serial Number",
+            value=st.session_state.serial_search,
+            placeholder="Enter serial number...",
+            key="serial_input"
+        )
+
+    with col4:
+        start_date_input = st.date_input("Start Date", value=None, key="start_date_input")
+
+    with col5:
+        end_date_input = st.date_input("End Date", value=None, key="end_date_input")
+
+    # Submit button for text searches
+    search_submitted = st.form_submit_button("🔍 Apply Search Filters", use_container_width=True)
+
+    if search_submitted:
+        # Update session state only when form is submitted
+        st.session_state.job_number_search = job_number_input if job_number_input else ''
+        st.session_state.part_search = part_input if part_input else ''
+        st.session_state.serial_search = normalize_search_input(serial_input) if serial_input else ''
+        st.session_state.start_date = start_date_input.isoformat() if start_date_input else None
+        st.session_state.end_date = end_date_input.isoformat() if end_date_input else None
         st.session_state.current_page = 1  # Reset to page 1 when searching
-    else:
-        st.session_state.job_number_search = ''
+        st.rerun()
 
-with col2:
-    part_input = st.text_input("🔧 Part Name/Code", placeholder="Enter part name or code...", key="part_input")
-    if part_input:
-        st.session_state.part_search = part_input
-        st.session_state.current_page = 1  # Reset to page 1 when searching
-    else:
-        st.session_state.part_search = ''
-
-with col3:
-    serial_input = st.text_input("🏷️ Serial Number", placeholder="Enter serial number...", key="serial_input")
-    if serial_input:
-        st.session_state.serial_search = serial_input
-        st.session_state.current_page = 1  # Reset to page 1 when searching
-    else:
-        st.session_state.serial_search = ''
-
-with col4:
-    start_date_input = st.date_input("Start Date", value=None, key="start_date_input")
-    if start_date_input:
-        st.session_state.start_date = start_date_input.isoformat()
-    else:
-        st.session_state.start_date = None
-
-with col5:
-    end_date_input = st.date_input("End Date", value=None, key="end_date_input")
-    if end_date_input:
-        st.session_state.end_date = end_date_input.isoformat()
-    else:
-        st.session_state.end_date = None
-
-# Second row: Month, Organization, Service Team, Asset
+# Second row: Dropdown filters (these don't need form wrapper - they're discrete selections)
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
@@ -664,55 +839,26 @@ with st.expander("📋 Bulk Serial Number Lookup"):
 
         if st.button("🔍 Search Serial Numbers", type="primary"):
             if bulk_serials_text:
-                # Parse serial numbers from text
-                serials = [s.strip() for s in bulk_serials_text.split('\n') if s.strip()]
+                # Parse and normalize serial numbers from text
+                raw_serials = [s.strip() for s in bulk_serials_text.split('\n') if s.strip()]
+                serial_pairs = [(raw, normalize_search_input(raw)) for raw in raw_serials]
 
-                # Search for each serial
+                # Batched search - single query instead of N queries
                 conn = get_db_connection()
                 cursor = conn.cursor()
-
-                results = []
-                for serial in serials:
-                    # Search in both line items and checklist parts
-                    cursor.execute("""
-                        SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
-                               j.created_at, j.asset_name, j.service_team,
-                               li.item_serial as line_item_serial,
-                               cp.part_serial as checklist_serial
-                        FROM jobs j
-                        LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
-                            AND (li.item_serial LIKE ? OR li.item_serial LIKE ?)
-                        LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
-                            AND (cp.part_serial LIKE ? OR cp.part_serial LIKE ?)
-                        WHERE li.item_serial IS NOT NULL OR cp.part_serial IS NOT NULL
-                        ORDER BY j.created_at DESC
-                    """, (f'%{serial}%', f'%{serial}%', f'%{serial}%', f'%{serial}%'))
-
-                    rows = cursor.fetchall()
-                    for row in rows:
-                        results.append({
-                            'searched_serial': serial,
-                            'job_number': row['job_number'],
-                            'job_title': row['job_title'],
-                            'customer': row['customer_name'],
-                            'asset': row['asset_name'] or 'N/A',
-                            'service_team': row['service_team'] or 'N/A',
-                            'created_at': row['created_at'],
-                            'job_uid': row['job_uid']
-                        })
-
+                results = search_serials_batch(serial_pairs, cursor)
                 conn.close()
 
                 if results:
-                    st.success(f"✅ Found {len(results)} job(s) across {len(serials)} serial numbers")
+                    st.success(f"✅ Found {len(results)} job(s) across {len(raw_serials)} serial numbers")
 
                     # Display results in a dataframe
                     df = pd.DataFrame(results)
                     df['Zuper Link'] = df['job_uid'].apply(lambda x: f"https://web.zuperpro.com/jobs/{x}/details")
 
                     # Reorder columns
-                    display_df = df[['searched_serial', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
-                    display_df.columns = ['Serial Searched', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
+                    display_df = df[['searched_serial', 'source', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
+                    display_df.columns = ['Serial Searched', 'Source', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
 
                     st.dataframe(display_df, use_container_width=True)
 
@@ -727,7 +873,8 @@ with st.expander("📋 Bulk Serial Number Lookup"):
 
                     # Show which serials weren't found
                     found_serials = set(df['searched_serial'].unique())
-                    not_found = [s for s in serials if s not in found_serials]
+                    normalized_serials = [n for _, n in serial_pairs]
+                    not_found = [s for s in normalized_serials if s and s not in found_serials and not any(s in fs for fs in found_serials)]
                     if not_found:
                         st.warning(f"⚠️ {len(not_found)} serial(s) not found: {', '.join(not_found)}")
                 else:
@@ -741,7 +888,6 @@ with st.expander("📋 Bulk Serial Number Lookup"):
         if uploaded_file is not None:
             try:
                 # Read CSV
-                import io
                 csv_data = pd.read_csv(uploaded_file)
 
                 # Try to find serial column
@@ -752,57 +898,31 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                         break
 
                 if serial_column:
-                    serials = csv_data[serial_column].dropna().astype(str).tolist()
-                    st.info(f"📊 Found {len(serials)} serial numbers in column '{serial_column}'")
+                    raw_serials = csv_data[serial_column].dropna().astype(str).tolist()
+                    st.info(f"📊 Found {len(raw_serials)} serial numbers in column '{serial_column}'")
 
                     if st.button("🔍 Search from CSV", type="primary"):
-                        # Same search logic as tab1
+                        # Build serial pairs for batched search
+                        serial_pairs = []
+                        for raw_serial in raw_serials:
+                            raw_serial = raw_serial.strip()
+                            if raw_serial:
+                                serial_pairs.append((raw_serial, normalize_search_input(raw_serial)))
+
+                        # Batched search - single query instead of N queries
                         conn = get_db_connection()
                         cursor = conn.cursor()
-
-                        results = []
-                        for serial in serials:
-                            serial = serial.strip()
-                            if not serial:
-                                continue
-
-                            cursor.execute("""
-                                SELECT DISTINCT j.job_uid, j.job_number, j.job_title, j.customer_name,
-                                       j.created_at, j.asset_name, j.service_team,
-                                       li.item_serial as line_item_serial,
-                                       cp.part_serial as checklist_serial
-                                FROM jobs j
-                                LEFT JOIN job_line_items li ON j.job_uid = li.job_uid
-                                    AND (li.item_serial LIKE ? OR li.item_serial LIKE ?)
-                                LEFT JOIN job_checklist_parts cp ON j.job_uid = cp.job_uid
-                                    AND (cp.part_serial LIKE ? OR cp.part_serial LIKE ?)
-                                WHERE li.item_serial IS NOT NULL OR cp.part_serial IS NOT NULL
-                                ORDER BY j.created_at DESC
-                            """, (f'%{serial}%', f'%{serial}%', f'%{serial}%', f'%{serial}%'))
-
-                            rows = cursor.fetchall()
-                            for row in rows:
-                                results.append({
-                                    'searched_serial': serial,
-                                    'job_number': row['job_number'],
-                                    'job_title': row['job_title'],
-                                    'customer': row['customer_name'],
-                                    'asset': row['asset_name'] or 'N/A',
-                                    'service_team': row['service_team'] or 'N/A',
-                                    'created_at': row['created_at'],
-                                    'job_uid': row['job_uid']
-                                })
-
+                        results = search_serials_batch(serial_pairs, cursor)
                         conn.close()
 
                         if results:
-                            st.success(f"✅ Found {len(results)} job(s) across {len(serials)} serial numbers")
+                            st.success(f"✅ Found {len(results)} job(s) across {len(raw_serials)} serial numbers")
 
                             df = pd.DataFrame(results)
                             df['Zuper Link'] = df['job_uid'].apply(lambda x: f"https://web.zuperpro.com/jobs/{x}/details")
 
-                            display_df = df[['searched_serial', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
-                            display_df.columns = ['Serial Searched', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
+                            display_df = df[['searched_serial', 'source', 'job_number', 'customer', 'asset', 'service_team', 'created_at', 'Zuper Link']]
+                            display_df.columns = ['Serial Searched', 'Source', 'Job #', 'Customer', 'Asset', 'Team', 'Date', 'Zuper Link']
 
                             st.dataframe(display_df, use_container_width=True)
 
@@ -815,7 +935,8 @@ with st.expander("📋 Bulk Serial Number Lookup"):
                             )
 
                             found_serials = set(df['searched_serial'].unique())
-                            not_found = [s for s in serials if s not in found_serials]
+                            normalized_serials = [n for _, n in serial_pairs]
+                            not_found = [s for s in normalized_serials if s and s not in found_serials and not any(s in fs for fs in found_serials)]
                             if not_found:
                                 with st.expander(f"⚠️ {len(not_found)} serial(s) not found"):
                                     st.write(', '.join(not_found))
